@@ -11,3 +11,7 @@ servicios:
   classification: ${CLASSIFICATION_SERVICE_URL:http://localhost:8082}
   notification: ${NOTIFICATION_SERVICE_URL:http://localhost:8084}
   reporting: ${REPORTING_SERVICE_URL:http://localhost:8085}
+
+# Sin valor por defecto a proposito: si falta JWT_SECRET, el gateway no arranca.
+jwt:
+  secret: ${JWT_SECRET}
