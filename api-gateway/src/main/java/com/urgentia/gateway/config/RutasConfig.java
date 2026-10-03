@@ -34,6 +34,28 @@ public class RutasConfig {
                 .route("reporting-service", r -> r
                         .path("/api/reportes", "/api/reportes/**")
                         .uri(reportingService))
+                // Documentacion OpenAPI de cada servicio, para el Swagger unificado.
+                // Cada tecnologia la publica en una ruta distinta (seccion 5.2 del contexto).
+                .route("docs-user-service", r -> r
+                        .path("/v3/api-docs/user-service")
+                        .filters(f -> f.setPath("/v3/api-docs"))
+                        .uri(userService))
+                .route("docs-ticket-service", r -> r
+                        .path("/v3/api-docs/ticket-service")
+                        .filters(f -> f.setPath("/v3/api-docs"))
+                        .uri(ticketService))
+                .route("docs-classification-service", r -> r
+                        .path("/v3/api-docs/classification-service")
+                        .filters(f -> f.setPath("/openapi.json"))
+                        .uri(classificationService))
+                .route("docs-notification-service", r -> r
+                        .path("/v3/api-docs/notification-service")
+                        .filters(f -> f.setPath("/api-docs-json"))
+                        .uri(notificationService))
+                .route("docs-reporting-service", r -> r
+                        .path("/v3/api-docs/reporting-service")
+                        .filters(f -> f.setPath("/api-docs-json"))
+                        .uri(reportingService))
                 .build();
     }
 }

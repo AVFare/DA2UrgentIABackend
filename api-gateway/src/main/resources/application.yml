@@ -19,3 +19,21 @@ servicios:
 # Sin valor por defecto a proposito: si falta JWT_SECRET, el gateway no arranca.
 jwt:
   secret: ${JWT_SECRET}
+
+# Swagger unificado en /swagger-ui.html, con un selector por servicio.
+# Cada url pasa por una ruta "docs-*" de RutasConfig, salvo la del propio gateway.
+springdoc:
+  swagger-ui:
+    urls:
+      - name: api-gateway
+        url: /v3/api-docs
+      - name: user-service
+        url: /v3/api-docs/user-service
+      - name: ticket-service
+        url: /v3/api-docs/ticket-service
+      - name: classification-service
+        url: /v3/api-docs/classification-service
+      - name: notification-service
+        url: /v3/api-docs/notification-service
+      - name: reporting-service
+        url: /v3/api-docs/reporting-service
