@@ -4,3 +4,10 @@ server:
 spring:
   application:
     name: api-gateway
+
+servicios:
+  user: ${USER_SERVICE_URL:http://localhost:8083}
+  ticket: ${TICKET_SERVICE_URL:http://localhost:8081}
+  classification: ${CLASSIFICATION_SERVICE_URL:http://localhost:8082}
+  notification: ${NOTIFICATION_SERVICE_URL:http://localhost:8084}
+  reporting: ${REPORTING_SERVICE_URL:http://localhost:8085}
