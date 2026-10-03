@@ -1,0 +1,106 @@
+# Compila y corre los tests de cada servicio del monorepo.
+# Un servicio que todavia no tiene proyecto se saltea, asi el pipeline
+# queda en verde mientras el resto del equipo va sumando el suyo.
+name: CI
+
+on:
+  push:
+    branches: [main, "dev/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  java:
+    name: Java · ${{ matrix.servicio }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        servicio: [api-gateway, ticket-service, user-service]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Ver si el servicio ya tiene proyecto
+        id: proyecto
+        run: |
+          if [ -f "${{ matrix.servicio }}/pom.xml" ]; then
+            echo "existe=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "existe=false" >> "$GITHUB_OUTPUT"
+            echo "Sin pom.xml: se saltea."
+          fi
+
+      - uses: actions/setup-java@v5
+        if: steps.proyecto.outputs.existe == 'true'
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Compilar y correr tests
+        if: steps.proyecto.outputs.existe == 'true'
+        working-directory: ${{ matrix.servicio }}
+        run: mvn -B verify
+
+  python:
+    name: Python · classification-service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Ver si el servicio ya tiene proyecto
+        id: proyecto
+        run: |
+          if [ -f "classification-service/requirements.txt" ]; then
+            echo "existe=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "existe=false" >> "$GITHUB_OUTPUT"
+            echo "Sin requirements.txt: se saltea."
+          fi
+
+      - uses: actions/setup-python@v6
+        if: steps.proyecto.outputs.existe == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias y correr tests
+        if: steps.proyecto.outputs.existe == 'true'
+        working-directory: classification-service
+        run: |
+          pip install -r requirements.txt pytest
+          pytest
+
+  node:
+    name: Node · ${{ matrix.servicio }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        servicio: [notification-service, reporting-service]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Ver si el servicio ya tiene proyecto
+        id: proyecto
+        run: |
+          if [ -f "${{ matrix.servicio }}/package.json" ]; then
+            echo "existe=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "existe=false" >> "$GITHUB_OUTPUT"
+            echo "Sin package.json: se saltea."
+          fi
+
+      - uses: actions/setup-node@v5
+        if: steps.proyecto.outputs.existe == 'true'
+        with:
+          node-version: "20"
+          package-manager-cache: false
+
+      - name: Instalar dependencias y correr tests
+        if: steps.proyecto.outputs.existe == 'true'
+        working-directory: ${{ matrix.servicio }}
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+          npm test
