@@ -22,3 +22,32 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+# Secretos
+.env
+.env.*
+!.env.example
+
+# Java / Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+coverage/
+npm-debug.log*
+
+# IDEs y sistema operativo
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
