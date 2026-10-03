@@ -11,7 +11,9 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      # Con -h pregunta por red. Mientras corre init.sql, Postgres escucha solo por
+      # socket local, asi que recien da "sano" cuando las bases ya estan creadas.
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1"]
       interval: 5s
       retries: 10
     networks: [urgentia-net]
@@ -30,9 +32,29 @@ services:
       - mongodata:/data/db
       - ./infra/mongo/init.js:/docker-entrypoint-initdb.d/init.js:ro
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      # Pregunta por el nombre del contenedor y no por localhost. Mientras corre
+      # init.js, Mongo escucha solo en localhost, asi que recien da "sano" cuando
+      # los usuarios ya estan creados.
+      test: ["CMD-SHELL", "mongosh --quiet --host $$(hostname) --eval \"db.adminCommand('ping')\""]
       interval: 5s
       retries: 10
+    networks: [urgentia-net]
+
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      USER_SERVICE_URL: http://user-service:8083
+      TICKET_SERVICE_URL: http://ticket-service:8081
+      CLASSIFICATION_SERVICE_URL: http://classification-service:8082
+      NOTIFICATION_SERVICE_URL: http://notification-service:8084
+      REPORTING_SERVICE_URL: http://reporting-service:8085
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 5s
+      retries: 20
     networks: [urgentia-net]
 
 volumes:

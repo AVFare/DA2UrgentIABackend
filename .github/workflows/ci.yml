@@ -1,4 +1,5 @@
 # Compila, corre los tests y construye la imagen Docker de cada servicio del monorepo.
+# Al final levanta todo con Docker Compose, como en una maquina limpia.
 # Un servicio que todavia no tiene proyecto se saltea, asi el pipeline
 # queda en verde mientras el resto del equipo va sumando el suyo.
 name: CI
@@ -116,3 +117,37 @@ jobs:
       - name: Construir la imagen Docker
         if: steps.proyecto.outputs.existe == 'true' && hashFiles(format('{0}/Dockerfile', matrix.servicio)) != ''
         run: docker build -t "urgentia-${{ matrix.servicio }}" "${{ matrix.servicio }}"
+
+  compose:
+    name: Compose · levanta todo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Crear el .env a partir del ejemplo
+        run: cp .env.example .env
+
+      - name: Levantar todo y esperar a que este sano
+        run: docker compose up -d --build --wait --wait-timeout 300
+
+      - name: Probar el gateway desde afuera
+        run: curl -fsS http://localhost:8080/health
+
+      - name: Probar que cada base acepta a su usuario
+        run: |
+          set -a; . ./.env; set +a
+          docker compose exec -T postgres psql "postgresql://users_user:${USERS_DB_PASSWORD}@postgres:5432/users_db" -c "select current_user"
+          docker compose exec -T postgres psql "postgresql://tickets_user:${TICKETS_DB_PASSWORD}@postgres:5432/tickets_db" -c "select current_user"
+          docker compose exec -T mongo mongosh "mongodb://classification_user:${CLASSIFICATION_DB_PASSWORD}@localhost:27017/classification_db" --quiet --eval "db.runCommand({ping:1})"
+          docker compose exec -T mongo mongosh "mongodb://notifications_user:${NOTIFICATIONS_DB_PASSWORD}@localhost:27017/notifications_db" --quiet --eval "db.runCommand({ping:1})"
+          docker compose exec -T mongo mongosh "mongodb://reporting_user:${REPORTING_DB_PASSWORD}@localhost:27017/reporting_db" --quiet --eval "db.runCommand({ping:1})"
+
+      - name: Mostrar estado y logs si algo fallo
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --tail 200
+
+      - name: Bajar todo
+        if: always()
+        run: docker compose down -v
