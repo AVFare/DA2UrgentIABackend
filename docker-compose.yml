@@ -14,7 +14,7 @@ services:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       retries: 10
-    networks: [triagedesk-net]
+    networks: [urgentia-net]
 
   mongo:
     image: mongo:7
@@ -33,11 +33,11 @@ services:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       retries: 10
-    networks: [triagedesk-net]
+    networks: [urgentia-net]
 
 volumes:
   pgdata:
   mongodata:
 
 networks:
-  triagedesk-net:
+  urgentia-net:
