@@ -4,6 +4,14 @@ server:
 spring:
   application:
     name: api-gateway
+  main:
+    banner-mode: "off"
+
+# Una linea JSON por evento: timestamp, level, service, correlationId, message.
+logging:
+  structured:
+    format:
+      console: com.urgentia.gateway.config.LogJsonFormatter
 
 # Lo informa GET /health. Mantener igual que <version> del pom.xml.
 servicio:

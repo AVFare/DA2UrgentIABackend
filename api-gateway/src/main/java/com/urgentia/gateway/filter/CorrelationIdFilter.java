@@ -1,5 +1,6 @@
 package com.urgentia.gateway.filter;
 
+import com.urgentia.gateway.config.LogJsonFormatter;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,8 +40,10 @@ public class CorrelationIdFilter implements WebFilter {
         exchange.getResponse().getHeaders().set(HEADER, correlationId);
         exchange.getAttributes().put(ATRIBUTO, correlationId);
 
-        log.info("correlationId={} {} {}", correlationId,
-                request.getMethod(), request.getURI().getPath());
+        // El correlationId va como dato del log; LogJsonFormatter lo escribe como campo propio.
+        log.atInfo()
+                .addKeyValue(LogJsonFormatter.CORRELATION_ID, correlationId)
+                .log("{} {}", request.getMethod(), request.getURI().getPath());
 
         return chain.filter(exchange.mutate().request(request).build());
     }

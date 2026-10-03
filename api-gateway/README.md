@@ -106,15 +106,28 @@ Los errores que corta el gateway usan el formato común del proyecto:
 }
 ```
 
+## Logs
+
+Cada log sale como una línea JSON con los campos que pide el proyecto:
+
+```json
+{"timestamp":"2026-10-05T14:03:11.482Z","level":"INFO","service":"api-gateway","correlationId":"a8e1b2c3-...","message":"GET /api/tickets"}
+```
+
+`CorrelationIdFilter` escribe una línea por pedido. El `correlationId` es un campo propio y
+no parte del mensaje, así se puede filtrar para seguir un pedido a través de los servicios.
+Si un log trae una excepción, se agrega el campo `stackTrace`. El formato lo define
+`config/LogJsonFormatter`.
+
 ## Tests
 
 ```
 mvn test
 ```
 
-Son 49 tests de integración. Levantan el gateway completo y, en lugar de los servicios
+Son 52 tests, casi todos de integración. Levantan el gateway completo y, en lugar de los servicios
 reales, un servicio de mentira (`ServicioFalso`) que registra qué le llegó. Cubren las
-rutas, los tres filtros, los errores 401 y 403, `/health` y el Swagger unificado.
+rutas, los tres filtros, los errores 401 y 403, `/health`, el Swagger unificado y el formato de los logs.
 
 ## Patrones aplicados
 

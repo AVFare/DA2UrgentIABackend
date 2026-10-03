@@ -1,4 +1,4 @@
-# Compila y corre los tests de cada servicio del monorepo.
+# Compila, corre los tests y construye la imagen Docker de cada servicio del monorepo.
 # Un servicio que todavia no tiene proyecto se saltea, asi el pipeline
 # queda en verde mientras el resto del equipo va sumando el suyo.
 name: CI
@@ -44,6 +44,10 @@ jobs:
         working-directory: ${{ matrix.servicio }}
         run: mvn -B verify
 
+      - name: Construir la imagen Docker
+        if: steps.proyecto.outputs.existe == 'true' && hashFiles(format('{0}/Dockerfile', matrix.servicio)) != ''
+        run: docker build -t "urgentia-${{ matrix.servicio }}" "${{ matrix.servicio }}"
+
   python:
     name: Python · classification-service
     runs-on: ubuntu-latest
@@ -71,6 +75,10 @@ jobs:
         run: |
           pip install -r requirements.txt pytest
           pytest
+
+      - name: Construir la imagen Docker
+        if: steps.proyecto.outputs.existe == 'true' && hashFiles('classification-service/Dockerfile') != ''
+        run: docker build -t urgentia-classification-service classification-service
 
   node:
     name: Node · ${{ matrix.servicio }}
@@ -104,3 +112,7 @@ jobs:
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
           npm test
+
+      - name: Construir la imagen Docker
+        if: steps.proyecto.outputs.existe == 'true' && hashFiles(format('{0}/Dockerfile', matrix.servicio)) != ''
+        run: docker build -t "urgentia-${{ matrix.servicio }}" "${{ matrix.servicio }}"
