@@ -62,8 +62,7 @@ class CorrelationIdFilterTests {
 
     @Test
     void tambienLoAgregaCuandoNoHayRuta() {
-        cliente.get().uri("/api/eventos")
-                .header(HttpHeaders.AUTHORIZATION, bearer()).exchange()
+        cliente.get().uri("/docs/no-existe").exchange()
                 .expectStatus().isNotFound()
                 .expectHeader().exists(HEADER);
     }

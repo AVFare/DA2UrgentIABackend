@@ -41,7 +41,7 @@ class RutasTests {
             "/api/usuarios",
             "/api/usuarios/123",
             "/api/tickets",
-            "/api/tickets/123/estado",
+            "/api/tickets/123",
             "/api/clasificaciones",
             "/api/notificaciones/123",
             "/api/reportes/resumen"
@@ -60,9 +60,9 @@ class RutasTests {
     }
 
     @Test
-    void noRuteaEventos() {
+    void noExponeEventosNiSiquieraAUnAdmin() {
         cliente.post().uri("/api/eventos").header(HttpHeaders.AUTHORIZATION, bearer()).exchange()
-                .expectStatus().isNotFound();
+                .expectStatus().isForbidden();
     }
 
     private String bearer() {
