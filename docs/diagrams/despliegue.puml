@@ -1,0 +1,79 @@
+@startuml despliegue
+title UrgentIA - Diagrama de despliegue (Docker Compose)
+
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam nodesep 40
+skinparam ranksep 55
+
+node "Equipo del cliente" as cliente {
+  artifact "Navegador (Swagger UI)\no cliente HTTP" as navegador
+}
+
+cloud "Internet" as internet {
+  node "Proveedor de LLM" as llm
+}
+
+node "Host con Docker" as host {
+  frame "Docker Compose - red urgentia-net" as red {
+
+    node "api-gateway\nJava 21 - Spring Cloud Gateway\n:8080" as gw <<contenedor>>
+
+    node "user-service\nJava 21 - Spring Boot\n:8083" as us <<contenedor>>
+    node "ticket-service\nJava 21 - Spring Boot\n:8081" as ts <<contenedor>>
+    node "classification-service\nPython 3.12 - FastAPI\n:8082" as cs <<contenedor>>
+    node "notification-service\nNode 20 - NestJS\n:8084" as ns <<contenedor>>
+    node "reporting-service\nNode 20 - NestJS\n:8085" as rs <<contenedor>>
+
+    node "postgres\nPostgreSQL 16\n:5432" as pg <<contenedor>> {
+      database "users_db" as usersdb
+      database "tickets_db" as ticketsdb
+    }
+
+    node "mongo\nMongoDB 7\n:27017" as mongo <<contenedor>> {
+      database "classification_db" as classdb
+      database "notifications_db" as notifdb
+      database "reporting_db" as repdb
+    }
+  }
+
+  storage "volumen pgdata" as pgdata
+  storage "volumen mongodata" as mongodata
+}
+
+us -[hidden]right- ts
+
+navegador --> gw : HTTP + JWT\npuerto 8080 (unico publicado)
+
+' El gateway rutea por HTTP a los cinco servicios.
+gw --> us : HTTP
+gw --> ts
+gw --> cs
+gw --> ns
+gw --> rs
+
+' Llamadas entre servicios, sin pasar por el gateway.
+ts -right-> cs : REST\n(timeout 7 s)
+ts ..> ns : eventos\nPOST /api/eventos
+ts ..> rs : eventos\nPOST /api/eventos
+
+' Cada servicio usa solo su base.
+us --> usersdb
+ts --> ticketsdb
+cs --> classdb
+ns --> notifdb
+rs --> repdb
+
+pg ..> pgdata : datos
+mongo ..> mongodata : datos
+
+cs -right-> llm : HTTPS
+
+note bottom of host
+  Solo api-gateway publica un puerto hacia afuera.
+  Los servicios se llaman entre si por su nombre
+  (por ejemplo http://ticket-service:8081).
+  En desarrollo, postgres y mongo publican su puerto
+  solo en 127.0.0.1 para usarlos desde el IDE.
+end note
+@enduml
