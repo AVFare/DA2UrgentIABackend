@@ -5,6 +5,10 @@ spring:
   application:
     name: api-gateway
 
+# Lo informa GET /health. Mantener igual que <version> del pom.xml.
+servicio:
+  version: 0.1.0
+
 servicios:
   user: ${USER_SERVICE_URL:http://localhost:8083}
   ticket: ${TICKET_SERVICE_URL:http://localhost:8081}
