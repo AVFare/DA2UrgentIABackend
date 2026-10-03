@@ -41,9 +41,10 @@ public class JwtAuthFilter implements WebFilter {
     private static final String CODIGO = "NO_AUTENTICADO";
 
     // Rutas publicas de la seccion 6.1 del contexto. Todo lo demas exige token.
+    // /webjars/** no esta en el contexto: son los archivos estaticos de Swagger UI.
     private static final PathPattern LOGIN = PathPatternParser.defaultInstance.parse("/api/auth/login");
     private static final List<PathPattern> PUBLICAS_GET = Stream.of(
-                    "/health", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/docs/**")
+                    "/health", "/swagger-ui.html", "/swagger-ui/**", "/webjars/**", "/v3/api-docs/**", "/docs/**")
             .map(PathPatternParser.defaultInstance::parse)
             .toList();
 
