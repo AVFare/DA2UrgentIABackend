@@ -1,0 +1,15 @@
+# Solo para los tests. Se suma al application.yml principal (no lo reemplaza).
+# H2 en memoria en modo PostgreSQL: los nulos van al final al ordenar, igual que en PostgreSQL.
+spring:
+  datasource:
+    url: jdbc:h2:mem:tickets;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+
+clasificacion:
+  timeout-ms: 1000
+
+eventos:
+  reintentos-ms: 50,50,50
+  timeout-ms: 1000
