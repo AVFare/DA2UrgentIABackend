@@ -51,7 +51,10 @@ class SwaggerAgregadoTests {
     void publicaLaDocumentacionDelPropioGateway() {
         cliente.get().uri("/v3/api-docs").exchange()
                 .expectStatus().isOk()
-                .expectBody().jsonPath("$.paths['/health']").exists();
+                .expectBody()
+                .jsonPath("$.info.title").isEqualTo("UrgentIA - API Gateway")
+                .jsonPath("$.info.version").isEqualTo("0.1.0")
+                .jsonPath("$.paths['/health']").exists();
     }
 
     @Test
