@@ -1,0 +1,26 @@
+# Entorno de desarrollo exclusivo de P6; no requiere los otros servicios.
+name: triagedesk-reporting-local
+services:
+  mongo-reporting:
+    image: mongo:7
+    ports:
+      - '127.0.0.1:27018:27017'
+    volumes:
+      - reporting-local-data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  reporting-service:
+    build: .
+    environment:
+      MONGO_URI: mongodb://mongo-reporting:27017/reporting_db
+      LOG_LEVEL: INFO
+    ports:
+      - '127.0.0.1:8085:8085'
+    depends_on:
+      mongo-reporting:
+        condition: service_healthy
+volumes:
+  reporting-local-data:
