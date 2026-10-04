@@ -43,7 +43,7 @@ export class TicketSnapshotDto {
   @IsEnum(ModuloAfectado)
   moduloAfectado!: ModuloAfectado | null;
   @ApiProperty({ format: 'uuid' }) @IsUUID('4') solicitanteId!: string;
-  @ApiProperty({ format: 'uuid', nullable: true })
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
   @ValidateIf((_, v) => v !== null)
   @IsUUID('4')
   agenteAsignadoId!: string | null;
@@ -51,7 +51,7 @@ export class TicketSnapshotDto {
   @IsISO8601({ strict: true })
   @Matches(/Z$/)
   fechaCreacion!: string;
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
   @ValidateIf((_, v) => v !== null)
   @IsISO8601({ strict: true })
   @Matches(/Z$/)
