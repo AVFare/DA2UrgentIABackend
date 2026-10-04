@@ -1,8 +1,14 @@
-# CONTEXTO_PROYECTO.md — TriageDesk
+# CONTEXTO_PROYECTO.md — UrgentIA
 
-> **Fuente única de verdad** del proyecto TriageDesk (TP de Desarrollo de Aplicaciones II, UADE).
+> **Fuente única de verdad** del proyecto UrgentIA (TP de Desarrollo de Aplicaciones II, UADE).
 > Todo el equipo (y sus asistentes de IA) trabaja a partir de este archivo.
-> Versión: 1.0 · Fecha: 28/09/2026 · Alcance: Defensa 1 (con la parte 2 ya contemplada).
+> Versión: 1.1 · Fecha: 04/10/2026 · Alcance: Defensa 1 (con la parte 2 ya contemplada).
+
+**Cambios de la versión 1.1**
+
+- El proyecto se llama **UrgentIA**. Cambian con el nombre: los paquetes Java (`com.urgentia.*`), la red de Compose (`urgentia-net`), los mails de los usuarios semilla (`@urgentia.local`) y el emisor del JWT (`urgentia-user-service`).
+- Spring Boot queda fijado en la línea 3.5 (sección 3).
+- Se actualizan a lo que ya está en el repo: estructura (sección 4), detalles del JWT y rutas públicas (sección 6), Compose y cómo correr (sección 14) y flujo de Git (sección 16).
 
 ---
 
@@ -19,12 +25,13 @@ Si sos una IA ayudando a un integrante del equipo:
 7. **Nunca pongas secretos en el código** (API keys, contraseñas, `JWT_SECRET`). Siempre por variable de entorno.
 8. **Mensajes de commit** en español con Conventional Commits: `feat(ticket): ...`, `fix(gateway): ...`, `test(ia): ...`, `docs: ...`.
 9. Si falta información para implementar algo, **preguntá** en vez de suponer. Si algo no está definido acá, proponé una opción y marcala como pendiente de acordar.
+10. **El proyecto se llama UrgentIA.** Si en tu contexto quedó otro nombre de una versión anterior de este archivo, no lo uses en paquetes, redes, mails ni textos.
 
 ---
 
 ## 1. Resumen del proyecto
 
-**TriageDesk** es una mesa de ayuda donde el solicitante carga un ticket en texto libre. Un LLM analiza el texto y estima **categoría, urgencia, impacto y módulo afectado**. El dominio calcula la **prioridad (P1–P4)** con una matriz fija y, si el caso es crítico, **escala** el ticket y **notifica** a la guardia.
+**UrgentIA** es una mesa de ayuda donde el solicitante carga un ticket en texto libre. Un LLM analiza el texto y estima **categoría, urgencia, impacto y módulo afectado**. El dominio calcula la **prioridad (P1–P4)** con una matriz fija y, si el caso es crítico, **escala** el ticket y **notifica** a la guardia.
 
 **Principio central:** la IA *sugiere*, el dominio *decide*. La IA nunca devuelve la prioridad.
 
@@ -54,26 +61,30 @@ Si sos una IA ayudando a un integrante del equipo:
 
 | Servicio | Puerto | Lenguaje / framework | Base de datos | Dueño | Responsabilidad |
 |---|---|---|---|---|---|
-| `api-gateway` | 8080 (único publicado) | Java 21, Spring Boot 3, Spring Cloud Gateway | — | P1 | Ruteo, validación JWT, autorización por rol, correlationId, Swagger agregado |
-| `ticket-service` | 8081 | Java 21, Spring Boot 3, Spring Data JPA | PostgreSQL `tickets_db` | P2 | **Core Domain**: tickets, prioridad, SLA, estados, escalamiento, publica eventos |
+| `api-gateway` | 8080 (único publicado) | Java 21, Spring Boot 3.5, Spring Cloud Gateway | — | P1 | Ruteo, validación JWT, autorización por rol, correlationId, Swagger agregado |
+| `ticket-service` | 8081 | Java 21, Spring Boot 3.5, Spring Data JPA | PostgreSQL `tickets_db` | P2 | **Core Domain**: tickets, prioridad, SLA, estados, escalamiento, publica eventos |
 | `classification-service` | 8082 | Python 3.12, FastAPI, Pydantic | MongoDB `classification_db` | P4 | Clasificación de texto con LLM (Model as a Service) |
-| `user-service` | 8083 | Java 21, Spring Boot 3, Spring Security | PostgreSQL `users_db` | P3 | Usuarios, roles, login y emisión de JWT |
+| `user-service` | 8083 | Java 21, Spring Boot 3.5, Spring Security | PostgreSQL `users_db` | P3 | Usuarios, roles, login y emisión de JWT |
 | `notification-service` | 8084 | Node 20, NestJS, TypeScript | MongoDB `notifications_db` | P5 | Consume eventos y registra/envía notificaciones (email simulado) |
 | `reporting-service` | 8085 | Node 20, NestJS, TypeScript | MongoDB `reporting_db` | P6 | Lado de lectura (CQRS): proyecta eventos y expone reportes y SLA |
 
 Infraestructura en Compose: `postgres` (postgres:16, puerto 5432) y `mongo` (mongo:7, puerto 27017).
 Nombres DNS internos = nombre del servicio en Compose (ej.: `http://ticket-service:8081`).
+En desarrollo, `postgres` y `mongo` publican su puerto solo en `127.0.0.1`, para poder usarlos desde el IDE.
+
+**Versión de Spring Boot (servicios Java):** 3.5.16, con Spring Cloud 2025.0.3 donde haga falta. start.spring.io ya no ofrece Spring Boot 3: generar el proyecto ahí y reemplazar el bloque `<parent>` por el de `api-gateway/pom.xml`. No usar Spring Boot 4.
 
 ---
 
 ## 4. Estructura del repositorio
 
 ```
-triagedesk/
+DA2UrgentIABackend/
 ├── README.md
 ├── CONTEXTO_PROYECTO.md          ← este archivo
 ├── docker-compose.yml
 ├── .env.example                  ← se copia a .env (el .env NO se commitea)
+├── .github/workflows/ci.yml      ← CI: tests, imagen Docker y arranque del Compose
 ├── infra/
 │   ├── postgres/init.sql         ← crea users_db, tickets_db y sus usuarios
 │   └── mongo/init.js             ← crea usuarios de las 3 bases
@@ -97,7 +108,7 @@ triagedesk/
 
 ### 4.1 Estructura interna por servicio
 
-**ticket-service (hexagonal)** — paquete base `com.triagedesk.ticket`
+**ticket-service (hexagonal)** — paquete base `com.urgentia.ticket`
 ```
 domain/
   model/        Ticket, TicketId, Clasificacion, Sla, EstadoTicket, Prioridad,
@@ -120,9 +131,9 @@ infrastructure/
   config/
 ```
 
-**user-service (capas simples)** — `com.triagedesk.user`: `controller/`, `service/`, `repository/`, `model/`, `dto/`, `security/` (JwtService, PasswordEncoder), `config/` (seed de datos).
+**user-service (capas simples)** — `com.urgentia.user`: `controller/`, `service/`, `repository/`, `model/`, `dto/`, `security/` (JwtService, PasswordEncoder), `config/` (seed de datos).
 
-**api-gateway** — `com.triagedesk.gateway`: `filter/` (CorrelationIdFilter, JwtAuthFilter, RoleAuthorizationFilter), `config/` (rutas, CORS, Swagger agregado).
+**api-gateway** — `com.urgentia.gateway`: `filter/` (CorrelationIdFilter, JwtAuthFilter, RoleAuthorizationFilter), `config/` (rutas, Swagger agregado, formato de logs), `error/` (formato común de error), `health/` (HealthController).
 
 **classification-service (Python)**
 ```
@@ -234,16 +245,19 @@ El gateway expone el Swagger unificado en `http://localhost:8080/swagger-ui.html
 
 - Emite: `user-service`. Valida: `api-gateway`.
 - Algoritmo **HS256** con `JWT_SECRET` (mínimo 32 caracteres), compartido por gateway y user-service.
+- La clave son los bytes UTF-8 de `JWT_SECRET`, tal cual (sin decodificar Base64).
+- Al firmar, indicar HS256 de forma explícita; no dejar que la librería elija el algoritmo según el largo de la clave.
+- El gateway lee los claims `sub` (lo propaga como `X-User-Id`) y `rol` (como `X-User-Rol`). Un token sin alguno de los dos se rechaza con 401.
 - Expiración: 60 minutos (`JWT_EXPIRATION_MINUTES`).
 - Claims:
 
 ```json
 {
   "sub": "b1c2d3e4-0000-4000-8000-000000000004",
-  "email": "solicitante@triagedesk.local",
+  "email": "solicitante@urgentia.local",
   "nombre": "Sofía Solicitante",
   "rol": "SOLICITANTE",
-  "iss": "triagedesk-user-service",
+  "iss": "urgentia-user-service",
   "iat": 1791300000,
   "exp": 1791303600
 }
@@ -254,7 +268,7 @@ El gateway expone el Swagger unificado en `http://localhost:8080/swagger-ui.html
 | Ruta | Método | Roles |
 |---|---|---|
 | `/api/auth/login` | POST | Público |
-| `/swagger-ui.html`, `/swagger-ui/**`, `/v3/api-docs/**`, `/docs/**`, `/health` | GET | Público |
+| `/swagger-ui.html`, `/swagger-ui/**`, `/webjars/**`, `/v3/api-docs/**`, `/docs/**`, `/health` | GET | Público |
 | `/api/usuarios` | POST | ADMIN |
 | `/api/usuarios/**` | GET | AGENTE, ADMIN |
 | `/api/tickets` | POST, GET | SOLICITANTE, AGENTE, ADMIN (un SOLICITANTE solo ve los suyos: lo filtra ticket-service con `X-User-Id`) |
@@ -265,15 +279,17 @@ El gateway expone el Swagger unificado en `http://localhost:8080/swagger-ui.html
 | `/api/reportes/**` | GET | AGENTE, ADMIN |
 | `/api/eventos` | — | **No se rutea.** Solo red interna |
 
+Lo que no figura en esta tabla se rechaza en el gateway: 401 sin token, 403 con token.
+
 ### 6.2 Usuarios semilla (user-service)
 
 | Email | Contraseña | Rol | Nota |
 |---|---|---|---|
-| `admin@triagedesk.local` | `Admin123!` | ADMIN | |
-| `guardia@triagedesk.local` | `Agente123!` | AGENTE | Equipo de guardia (recibe escalados) |
-| `soporte@triagedesk.local` | `Agente123!` | AGENTE | |
-| `solicitante@triagedesk.local` | `Usuario123!` | SOLICITANTE | Usado en la demo |
-| `solicitante2@triagedesk.local` | `Usuario123!` | SOLICITANTE | |
+| `admin@urgentia.local` | `Admin123!` | ADMIN | |
+| `guardia@urgentia.local` | `Agente123!` | AGENTE | Equipo de guardia (recibe escalados) |
+| `soporte@urgentia.local` | `Agente123!` | AGENTE | |
+| `solicitante@urgentia.local` | `Usuario123!` | SOLICITANTE | Usado en la demo |
+| `solicitante2@urgentia.local` | `Usuario123!` | SOLICITANTE | |
 
 Contraseñas solo para desarrollo; se guardan con BCrypt.
 
@@ -390,13 +406,13 @@ Todas las rutas de abajo son las **del servicio**; desde afuera se llaman igual 
 **`POST /api/auth/login`**
 ```json
 // request
-{ "email": "solicitante@triagedesk.local", "password": "Usuario123!" }
+{ "email": "solicitante@urgentia.local", "password": "Usuario123!" }
 // 200
 {
   "accessToken": "eyJhbGciOiJIUzI1NiJ9...",
   "tokenType": "Bearer",
   "expiresIn": 3600,
-  "usuario": { "id": "b1c2d3e4-...", "nombre": "Sofía Solicitante", "email": "solicitante@triagedesk.local", "rol": "SOLICITANTE" }
+  "usuario": { "id": "b1c2d3e4-...", "nombre": "Sofía Solicitante", "email": "solicitante@urgentia.local", "rol": "SOLICITANTE" }
 }
 // 401 CREDENCIALES_INVALIDAS
 ```
@@ -404,7 +420,7 @@ Todas las rutas de abajo son las **del servicio**; desde afuera se llaman igual 
 **`POST /api/usuarios`** (ADMIN)
 ```json
 // request
-{ "nombre": "Ana Agente", "email": "ana@triagedesk.local", "password": "Segura123!", "rol": "AGENTE" }
+{ "nombre": "Ana Agente", "email": "ana@urgentia.local", "password": "Segura123!", "rol": "AGENTE" }
 // 201 → Usuario
 // 409 EMAIL_DUPLICADO
 ```
@@ -414,7 +430,7 @@ Todas las rutas de abajo son las **del servicio**; desde afuera se llaman igual 
 
 `Usuario` (nunca incluye password ni hash):
 ```json
-{ "id": "uuid", "nombre": "Ana Agente", "email": "ana@triagedesk.local", "rol": "AGENTE", "activo": true, "fechaAlta": "2026-10-01T12:00:00Z" }
+{ "id": "uuid", "nombre": "Ana Agente", "email": "ana@urgentia.local", "rol": "AGENTE", "activo": true, "fechaAlta": "2026-10-01T12:00:00Z" }
 ```
 
 ### 9.2 ticket-service (8081)
@@ -887,7 +903,9 @@ LOG_LEVEL=INFO
 | notification-service | `MONGO_URI=mongodb://notifications_user:<pass>@mongo:27017/notifications_db` |
 | reporting-service | `MONGO_URI=mongodb://reporting_user:<pass>@mongo:27017/reporting_db` |
 
-### 14.3 Esqueleto de `docker-compose.yml` (lo completa P1)
+### 14.3 `docker-compose.yml`
+
+`postgres`, `mongo` y `api-gateway` ya están en el archivo del repo, que es el que vale. Cada dueño suma la entrada de su servicio siguiendo el ejemplo de `ticket-service`.
 
 ```yaml
 services:
@@ -895,36 +913,56 @@ services:
     image: postgres:16
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      USERS_DB_PASSWORD: ${USERS_DB_PASSWORD}
+      TICKETS_DB_PASSWORD: ${TICKETS_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1"]
       interval: 5s
       retries: 10
-    networks: [triagedesk-net]
+    networks: [urgentia-net]
 
   mongo:
     image: mongo:7
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      CLASSIFICATION_DB_PASSWORD: ${CLASSIFICATION_DB_PASSWORD}
+      NOTIFICATIONS_DB_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD}
+      REPORTING_DB_PASSWORD: ${REPORTING_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongodata:/data/db
       - ./infra/mongo/init.js:/docker-entrypoint-initdb.d/init.js:ro
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD-SHELL", "mongosh --quiet --host $$(hostname) --eval \"db.adminCommand('ping')\""]
       interval: 5s
       retries: 10
-    networks: [triagedesk-net]
+    networks: [urgentia-net]
 
   api-gateway:
     build: ./api-gateway
-    ports: ["8080:8080"]
-    env_file: .env
-    depends_on: [user-service, ticket-service, classification-service, notification-service, reporting-service]
-    networks: [triagedesk-net]
+    ports:
+      - "8080:8080"
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      USER_SERVICE_URL: http://user-service:8083
+      TICKET_SERVICE_URL: http://ticket-service:8081
+      CLASSIFICATION_SERVICE_URL: http://classification-service:8082
+      NOTIFICATION_SERVICE_URL: http://notification-service:8084
+      REPORTING_SERVICE_URL: http://reporting-service:8085
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 5s
+      retries: 20
+    networks: [urgentia-net]
 
+  # Ejemplo para sumar un servicio (todavía no está en el archivo del repo):
   ticket-service:
     build: ./ticket-service
     env_file: .env
@@ -936,7 +974,7 @@ services:
       EVENT_SUBSCRIBERS: http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos
     depends_on:
       postgres: { condition: service_healthy }
-    networks: [triagedesk-net]
+    networks: [urgentia-net]
 
   # user-service, classification-service, notification-service y reporting-service: mismo patrón
 
@@ -945,8 +983,10 @@ volumes:
   mongodata:
 
 networks:
-  triagedesk-net:
+  urgentia-net:
 ```
+
+Cada servicio suma también su `healthcheck` contra `GET /health`: el CI levanta todo el Compose y espera a que esté sano.
 
 Imágenes base sugeridas: `eclipse-temurin:21-jre` (Java, build multi-stage con `maven:3.9-eclipse-temurin-21`), `python:3.12-slim`, `node:20-alpine`.
 
@@ -954,8 +994,9 @@ Imágenes base sugeridas: `eclipse-temurin:21-jre` (Java, build multi-stage con 
 
 ```bash
 cp .env.example .env
-docker compose up --build
+docker compose up -d --build --wait
 # Swagger unificado: http://localhost:8080/swagger-ui.html
+# Estado del gateway:  http://localhost:8080/health
 ```
 
 ---
@@ -987,8 +1028,11 @@ docker compose up --build
 
 ## 16. Flujo de trabajo con Git
 
-- `main` protegida; todo entra por Pull Request con 1 aprobación.
-- Ramas: `feat/<servicio>-<tema>`, `fix/...`, `docs/...`, `test/...`.
+- `main` está protegida. El trabajo de la entrega 1 se integra en `dev/entrega-1`: no se puede pushear directo, todo entra por Pull Request.
+- Ramas de tarea: `feat/<servicio>-<tema>`, `fix/...`, `chore/...`, `docs/...`, `test/...`. Salen de `dev/entrega-1` (o de la rama propia del servicio) y vuelven por PR.
+- Mergear con "Create a merge commit", sin squash: así se conservan los commits de cada integrante.
+- Cada PR y cada push a `main` o a ramas `dev/**` corre el CI (`.github/workflows/ci.yml`): tests de cada servicio, construcción de su imagen Docker y arranque del Compose completo.
+- Para la defensa, `dev/entrega-1` se lleva a `main` con merge commit.
 - Commits: Conventional Commits en español (`feat(ticket): agrega matriz de prioridad`).
 - Commits chicos y frecuentes: el docente revisa quién hizo qué.
 - Nunca commitear `.env`, API keys ni carpetas `target/`, `node_modules/`, `__pycache__/`.
@@ -1016,3 +1060,4 @@ docker compose up --build
 | Fecha exacta de la Defensa 1 | Estimada 12/10 | Todos |
 | Confirmar lenguajes por integrante (Java/Python/Node) | Pendiente | Todos, 29/9 |
 | Nombres de integrantes por rol P1–P6 | Pendiente | Todos |
+| Swagger unificado: que cada servicio declare el esquema de seguridad `bearer` en su OpenAPI (para el botón Authorize) y que los Java usen `server.forward-headers-strategy=framework` (para que "Try it out" pase por el gateway) | A verificar con el primer servicio detrás del gateway | P1 con P2 y P3 |
