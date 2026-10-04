@@ -159,6 +159,15 @@ describe('reporting-service HTTP + MongoDB standalone', () => {
     await enviar(evento);
     expect((await listar()).body.content[0].titulo).toBe('$titulo literal');
   });
+  it('aplica el primer snapshot aunque su fecha sea anterior a 1970', async () => {
+    const evento = eventoEjemplo({ occurredAt: '1960-01-01T00:00:00Z' });
+    evento.payload.ticket.fechaCreacion = evento.occurredAt;
+    await enviar(evento);
+    expect((await listar()).body.content[0]).toMatchObject({
+      titulo: evento.payload.ticket.titulo,
+      ultimoEventoEn: '1960-01-01T00:00:00.000Z',
+    });
+  });
   it('un error de proyeccion deja el evento pendiente y recuperable', async () => {
     const repo = app.get(TicketViewRepository);
     const spy = jest

@@ -18,7 +18,7 @@ export class TicketViewRepository implements OnModuleInit {
     // entre eventos de un mismo ticket y funciona sin replica set/transacciones.
     const aplica = {
       $lte: [
-        { $ifNull: ['$ultimoEventoEn', new Date(0)] },
+        { $ifNull: ['$ultimoEventoEn', ticket.ultimoEventoEn] },
         ticket.ultimoEventoEn,
       ],
     };
