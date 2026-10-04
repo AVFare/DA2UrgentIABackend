@@ -1,0 +1,566 @@
+openapi: 3.0.3
+info:
+  title: TriageDesk reporting-service
+  version: 0.1.0
+  description:
+    Contrato P6. Consulta mediante gateway (AGENTE o ADMIN); el gateway
+    valida JWT. Eventos exclusivamente por red interna.
+servers:
+  - url: http://reporting-service:8085
+paths:
+  /api/eventos:
+    post:
+      tags:
+        - Eventos
+      summary: Proyectar un evento de ticket (solo red interna)
+      description:
+        Idempotencia por eventId. Los eventos antiguos se registran pero
+        no sobrescriben ticket_view. Un fallo devuelve 500 y permite reintentar. No
+        publicar esta ruta en el gateway.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventoDto"
+      responses:
+        "202":
+          description: Procesado o duplicado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResultadoEventoDto"
+        "400":
+          description: Sobre invalido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDto"
+        "500":
+          description: Error interno; reintentar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDto"
+  /api/reportes/resumen:
+    get:
+      tags:
+        - Reportes
+      summary: Totales y distribuciones de tickets
+      parameters:
+        - name: X-Correlation-Id
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Consulta exitosa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumenDto"
+        "400":
+          description: Parametros invalidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDto"
+        "500":
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDto"
+  /api/reportes/sla:
+    get:
+      tags:
+        - Reportes
+      summary: Tickets vencidos y cumplimiento por prioridad
+      parameters:
+        - name: X-Correlation-Id
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Consulta exitosa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlaDto"
+        "400":
+          description: Parametros invalidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDto"
+        "500":
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDto"
+  /api/reportes/tickets:
+    get:
+      tags:
+        - Reportes
+      summary: Vista de tickets filtrada y paginada
+      parameters:
+        - name: X-Correlation-Id
+          in: header
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: prioridad
+          required: false
+          schema:
+            type: string
+            enum: &id002
+              - P1
+              - P2
+              - P3
+              - P4
+        - in: query
+          name: estado
+          required: false
+          schema:
+            type: string
+            enum: &id001
+              - NUEVO
+              - PENDIENTE_CLASIFICACION
+              - CLASIFICADO
+              - ASIGNADO
+              - EN_CURSO
+              - ESCALADO
+              - RESUELTO
+              - CERRADO
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - in: query
+          name: size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Consulta exitosa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginaTicketsDto"
+        "400":
+          description: Parametros invalidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDto"
+        "500":
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDto"
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Disponibilidad del servicio y de MongoDB
+      responses:
+        "200":
+          description: Disponible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthDto"
+        "503":
+          description: MongoDB no disponible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDto"
+components:
+  schemas:
+    TicketSnapshotDto:
+      type: object
+      additionalProperties: false
+      required:
+        - ticketId
+        - titulo
+        - estado
+        - prioridad
+        - categoria
+        - moduloAfectado
+        - solicitanteId
+        - agenteAsignadoId
+        - fechaCreacion
+        - fechaLimiteSla
+      properties:
+        ticketId: &id003
+          type: string
+          format: uuid
+          example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        titulo: &id005
+          type: string
+          minLength: 5
+          maxLength: 120
+        estado: &id006
+          type: string
+          enum: *id001
+        prioridad: &id007
+          type: string
+          enum: *id002
+          nullable: true
+        categoria: &id008
+          type: string
+          enum:
+            - INCIDENTE
+            - SOLICITUD
+            - CONSULTA
+            - BUG
+          nullable: true
+        moduloAfectado: &id009
+          type: string
+          enum:
+            - AUTENTICACION
+            - FACTURACION
+            - PAGOS
+            - REPORTES
+            - INFRAESTRUCTURA
+            - BASE_DE_DATOS
+            - INTEGRACIONES
+            - OTRO
+          nullable: true
+        solicitanteId: *id003
+        agenteAsignadoId: &id010
+          type: string
+          format: uuid
+          example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+          nullable: true
+        fechaCreacion: &id004
+          type: string
+          format: date-time
+          pattern: Z$
+          example: "2026-10-05T14:03:11Z"
+        fechaLimiteSla: &id011
+          type: string
+          format: date-time
+          pattern: Z$
+          example: "2026-10-05T14:03:11Z"
+          nullable: true
+    PayloadEventoDto:
+      type: object
+      additionalProperties: false
+      required:
+        - ticket
+      properties:
+        ticket:
+          $ref: "#/components/schemas/TicketSnapshotDto"
+        estadoAnterior:
+          type: string
+          enum: *id001
+        motivo:
+          type: string
+          minLength: 1
+      description:
+        estadoAnterior obligatorio en TicketEstadoCambiado, TicketEscalado
+        y TicketResuelto; motivo obligatorio en TicketEscalado.
+    EventoDto:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - eventType
+        - version
+        - occurredAt
+        - correlationId
+        - source
+        - payload
+      properties:
+        eventId: *id003
+        eventType:
+          type: string
+          enum:
+            - TicketCreado
+            - TicketClasificado
+            - TicketEscalado
+            - TicketAsignado
+            - TicketEstadoCambiado
+            - TicketResuelto
+        version:
+          type: integer
+          enum:
+            - 1
+        occurredAt: *id004
+        correlationId: *id003
+        source:
+          type: string
+          enum:
+            - ticket-service
+        payload:
+          $ref: "#/components/schemas/PayloadEventoDto"
+    TicketViewDto:
+      type: object
+      additionalProperties: false
+      required:
+        - ticketId
+        - titulo
+        - estado
+        - prioridad
+        - categoria
+        - moduloAfectado
+        - solicitanteId
+        - agenteAsignadoId
+        - fechaCreacion
+        - fechaLimiteSla
+        - escalado
+        - fechaResolucion
+        - ultimoEventoEn
+      properties:
+        ticketId: *id003
+        titulo: *id005
+        estado: *id006
+        prioridad: *id007
+        categoria: *id008
+        moduloAfectado: *id009
+        solicitanteId: *id003
+        agenteAsignadoId: *id010
+        fechaCreacion: *id004
+        fechaLimiteSla: *id011
+        escalado:
+          type: boolean
+        fechaResolucion:
+          type: string
+          format: date-time
+          pattern: Z$
+          example: "2026-10-05T14:03:11Z"
+          nullable: true
+        ultimoEventoEn: *id004
+    ResultadoEventoDto:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - resultado
+      properties:
+        eventId: *id003
+        resultado:
+          type: string
+          enum:
+            - PROCESADO
+            - DUPLICADO
+    ErrorDto:
+      type: object
+      additionalProperties: false
+      required:
+        - codigo
+        - mensaje
+        - timestamp
+        - path
+        - correlationId
+      properties:
+        codigo:
+          type: string
+        mensaje:
+          type: string
+        detalles:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - campo
+              - mensaje
+            properties:
+              campo:
+                type: string
+              mensaje:
+                type: string
+        timestamp: *id004
+        path:
+          type: string
+        correlationId:
+          type: string
+    ResumenDto:
+      type: object
+      additionalProperties: false
+      required:
+        - total
+        - abiertos
+        - escalados
+        - slaVencidos
+        - porPrioridad
+        - porCategoria
+        - porEstado
+        - generadoEn
+      properties:
+        total: &id012
+          type: integer
+          minimum: 0
+        abiertos: *id012
+        escalados: *id012
+        slaVencidos: *id012
+        porPrioridad:
+          type: object
+          additionalProperties: false
+          required:
+            - P1
+            - P2
+            - P3
+            - P4
+            - SIN_PRIORIDAD
+          properties:
+            P1: *id012
+            P2: *id012
+            P3: *id012
+            P4: *id012
+            SIN_PRIORIDAD: *id012
+        porCategoria:
+          type: object
+          additionalProperties: false
+          required:
+            - INCIDENTE
+            - SOLICITUD
+            - CONSULTA
+            - BUG
+            - SIN_CATEGORIA
+          properties:
+            INCIDENTE: *id012
+            SOLICITUD: *id012
+            CONSULTA: *id012
+            BUG: *id012
+            SIN_CATEGORIA: *id012
+        porEstado:
+          type: object
+          additionalProperties: false
+          required:
+            - NUEVO
+            - PENDIENTE_CLASIFICACION
+            - CLASIFICADO
+            - ASIGNADO
+            - EN_CURSO
+            - ESCALADO
+            - RESUELTO
+            - CERRADO
+          properties:
+            NUEVO: *id012
+            PENDIENTE_CLASIFICACION: *id012
+            CLASIFICADO: *id012
+            ASIGNADO: *id012
+            EN_CURSO: *id012
+            ESCALADO: *id012
+            RESUELTO: *id012
+            CERRADO: *id012
+        generadoEn: *id004
+    SlaDto:
+      type: object
+      additionalProperties: false
+      required:
+        - vencidos
+        - cumplimientoPorPrioridad
+        - generadoEn
+      properties:
+        vencidos:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - ticketId
+              - titulo
+              - prioridad
+              - estado
+              - fechaLimiteSla
+              - horasVencido
+            properties:
+              ticketId: *id003
+              titulo:
+                type: string
+              prioridad:
+                type: string
+                enum: *id002
+                nullable: true
+              estado:
+                type: string
+                enum: *id001
+              fechaLimiteSla: *id004
+              horasVencido:
+                type: number
+                minimum: 0
+        cumplimientoPorPrioridad:
+          type: object
+          additionalProperties: false
+          required:
+            - P1
+            - P2
+            - P3
+            - P4
+          properties:
+            P1: &id013
+              type: object
+              additionalProperties: false
+              required:
+                - resueltos
+                - enTermino
+                - porcentaje
+              properties:
+                resueltos: *id012
+                enTermino: *id012
+                porcentaje:
+                  type: number
+                  minimum: 0
+                  maximum: 100
+                  nullable: true
+            P2: *id013
+            P3: *id013
+            P4: *id013
+        generadoEn: *id004
+    PaginaTicketsDto:
+      type: object
+      additionalProperties: false
+      required:
+        - content
+        - page
+        - size
+        - totalElements
+        - totalPages
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/TicketViewDto"
+        page: *id012
+        size:
+          type: integer
+          minimum: 1
+          maximum: 100
+        totalElements: *id012
+        totalPages: *id012
+    HealthDto:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - service
+        - version
+      properties:
+        status:
+          type: string
+          enum:
+            - UP
+        service:
+          type: string
+          enum:
+            - reporting-service
+        version:
+          type: string
+          enum:
+            - 0.1.0
