@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { HealthController } from './health/health.controller';
+import { EventosModule } from './eventos/eventos.module';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { HealthController } from './health/health.controller';
         return { uri, serverSelectionTimeoutMS: 5000, retryAttempts: 0 };
       },
     }),
+    EventosModule,
   ],
   controllers: [HealthController],
 })
