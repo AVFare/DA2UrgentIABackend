@@ -1,0 +1,210 @@
+{
+  "generadoEn": "2026-10-04T16:37:21.635Z",
+  "entorno": {
+    "node": "v20.20.1",
+    "mongo": "7.0.24",
+    "modalidad": "JavaScript compilado + proceso MongoDB real temporal standalone; sin servicios P1-P5"
+  },
+  "resultados": [
+    {
+      "nombre": "Health",
+      "metodo": "GET",
+      "ruta": "/health",
+      "status": 200,
+      "respuesta": {
+        "status": "UP",
+        "service": "reporting-service",
+        "version": "0.1.0"
+      }
+    },
+    {
+      "nombre": "Creacion",
+      "metodo": "POST",
+      "ruta": "/api/eventos",
+      "status": 202,
+      "respuesta": {
+        "eventId": "77dd2b8f-9356-43e0-8c4d-5f205daeacd8",
+        "resultado": "PROCESADO"
+      }
+    },
+    {
+      "nombre": "Escalamiento",
+      "metodo": "POST",
+      "ruta": "/api/eventos",
+      "status": 202,
+      "respuesta": {
+        "eventId": "170ebc0e-4ffb-41ae-92d0-e2a3cdc3c5d4",
+        "resultado": "PROCESADO"
+      }
+    },
+    {
+      "nombre": "Duplicado",
+      "metodo": "POST",
+      "ruta": "/api/eventos",
+      "status": 202,
+      "respuesta": {
+        "eventId": "170ebc0e-4ffb-41ae-92d0-e2a3cdc3c5d4",
+        "resultado": "DUPLICADO"
+      }
+    },
+    {
+      "nombre": "Evento antiguo",
+      "metodo": "POST",
+      "ruta": "/api/eventos",
+      "status": 202,
+      "respuesta": {
+        "eventId": "e30c13e2-de8f-4ae9-a422-4b60eeb5b79d",
+        "resultado": "PROCESADO"
+      }
+    },
+    {
+      "nombre": "Resumen del escalado",
+      "metodo": "GET",
+      "ruta": "/api/reportes/resumen",
+      "status": 200,
+      "respuesta": {
+        "total": 1,
+        "abiertos": 1,
+        "escalados": 1,
+        "slaVencidos": 1,
+        "porPrioridad": {
+          "P1": 1,
+          "P2": 0,
+          "P3": 0,
+          "P4": 0,
+          "SIN_PRIORIDAD": 0
+        },
+        "porCategoria": {
+          "INCIDENTE": 1,
+          "SOLICITUD": 0,
+          "CONSULTA": 0,
+          "BUG": 0,
+          "SIN_CATEGORIA": 0
+        },
+        "porEstado": {
+          "NUEVO": 0,
+          "PENDIENTE_CLASIFICACION": 0,
+          "CLASIFICADO": 0,
+          "ASIGNADO": 0,
+          "EN_CURSO": 0,
+          "ESCALADO": 1,
+          "RESUELTO": 0,
+          "CERRADO": 0
+        },
+        "generadoEn": "2026-10-04T16:37:21.572Z"
+      }
+    },
+    {
+      "nombre": "SLA vencido",
+      "metodo": "GET",
+      "ruta": "/api/reportes/sla",
+      "status": 200,
+      "respuesta": {
+        "vencidos": [
+          {
+            "ticketId": "1ecab94d-d47a-48f3-a1b5-62e20a4ef64e",
+            "titulo": "Produccion caida (demo P6)",
+            "prioridad": "P1",
+            "estado": "ESCALADO",
+            "fechaLimiteSla": "2026-10-04T15:37:22.409Z",
+            "horasVencido": 1
+          }
+        ],
+        "cumplimientoPorPrioridad": {
+          "P1": {
+            "resueltos": 0,
+            "enTermino": 0,
+            "porcentaje": null
+          },
+          "P2": {
+            "resueltos": 0,
+            "enTermino": 0,
+            "porcentaje": null
+          },
+          "P3": {
+            "resueltos": 0,
+            "enTermino": 0,
+            "porcentaje": null
+          },
+          "P4": {
+            "resueltos": 0,
+            "enTermino": 0,
+            "porcentaje": null
+          }
+        },
+        "generadoEn": "2026-10-04T16:37:21.588Z"
+      }
+    },
+    {
+      "nombre": "Tickets filtrados",
+      "metodo": "GET",
+      "ruta": "/api/reportes/tickets?prioridad=P1&estado=ESCALADO",
+      "status": 200,
+      "respuesta": {
+        "content": [
+          {
+            "ticketId": "1ecab94d-d47a-48f3-a1b5-62e20a4ef64e",
+            "titulo": "Produccion caida (demo P6)",
+            "estado": "ESCALADO",
+            "prioridad": "P1",
+            "categoria": "INCIDENTE",
+            "moduloAfectado": "AUTENTICACION",
+            "escalado": true,
+            "solicitanteId": "6b32a255-f60c-40c7-8c0e-df04f7150102",
+            "agenteAsignadoId": null,
+            "fechaCreacion": "2026-10-04T14:37:21.409Z",
+            "fechaLimiteSla": "2026-10-04T15:37:22.409Z",
+            "fechaResolucion": null,
+            "ultimoEventoEn": "2026-10-04T14:37:22.409Z"
+          }
+        ],
+        "page": 0,
+        "size": 20,
+        "totalElements": 1,
+        "totalPages": 1
+      }
+    },
+    {
+      "nombre": "Resolucion fuera de termino",
+      "metodo": "POST",
+      "ruta": "/api/eventos",
+      "status": 202,
+      "respuesta": {
+        "eventId": "f517b221-d342-45d7-9197-3af42cbd58fe",
+        "resultado": "PROCESADO"
+      }
+    },
+    {
+      "nombre": "Cumplimiento tras resolver",
+      "metodo": "GET",
+      "ruta": "/api/reportes/sla",
+      "status": 200,
+      "respuesta": {
+        "vencidos": [],
+        "cumplimientoPorPrioridad": {
+          "P1": {
+            "resueltos": 1,
+            "enTermino": 0,
+            "porcentaje": 0
+          },
+          "P2": {
+            "resueltos": 0,
+            "enTermino": 0,
+            "porcentaje": null
+          },
+          "P3": {
+            "resueltos": 0,
+            "enTermino": 0,
+            "porcentaje": null
+          },
+          "P4": {
+            "resueltos": 0,
+            "enTermino": 0,
+            "porcentaje": null
+          }
+        },
+        "generadoEn": "2026-10-04T16:37:21.625Z"
+      }
+    }
+  ]
+}
