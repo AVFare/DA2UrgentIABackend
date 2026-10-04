@@ -57,6 +57,25 @@ services:
       retries: 20
     networks: [urgentia-net]
 
+  ticket-service:
+    build: ./ticket-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/tickets_db
+      DB_USER: tickets_user
+      DB_PASSWORD: ${TICKETS_DB_PASSWORD}
+      CLASSIFICATION_URL: http://classification-service:8082
+      CLASSIFICATION_TIMEOUT_MS: ${CLASSIFICATION_TIMEOUT_MS:-7000}
+      EVENT_SUBSCRIBERS: http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/health"]
+      interval: 5s
+      retries: 20
+    networks: [urgentia-net]
+
 volumes:
   pgdata:
   mongodata:
