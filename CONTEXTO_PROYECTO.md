@@ -2,7 +2,13 @@
 
 > **Fuente única de verdad** del proyecto UrgentIA (TP de Desarrollo de Aplicaciones II, UADE).
 > Todo el equipo (y sus asistentes de IA) trabaja a partir de este archivo.
-> Versión: 1.1 · Fecha: 04/10/2026 · Alcance: Defensa 1 (con la parte 2 ya contemplada).
+> Versión: 1.2 · Fecha: 05/10/2026 · Alcance: Defensa 1 (con la parte 2 ya contemplada).
+
+**Cambios de la versión 1.2**
+
+- classification-service: la interfaz `LlmProvider` y la del repositorio pasan a `application/ports.py`, para que la capa de aplicación no dependa de infraestructura. Los adapters de LLM van uno por contrato de API (sección 4.1).
+- Proveedores de LLM definidos: `mock`, `ollama` y `groq` (sección 12.1). Se suma la variable opcional `LLM_BASE_URL` (sección 14).
+- `GET /api/clasificaciones`: `ticketId` pasa a ser un filtro opcional y la respuesta va paginada (sección 9.3).
 
 **Cambios de la versión 1.1**
 
@@ -138,17 +144,21 @@ infrastructure/
 **classification-service (Python)**
 ```
 app/
-  main.py
-  domain/         enums.py, models.py (Clasificacion)
-  application/    clasificacion_facade.py, masking.py
+  main.py, config.py (variables de entorno)
+  domain/         enums.py, models.py (Clasificacion y sus invariantes)
+  application/    ports.py (LlmProvider, ClasificacionRepository), clasificacion_facade.py, masking.py
   infrastructure/
-    api/          routes.py, errors.py, health.py
-    llm/          base.py (LlmProvider), mock_provider.py, <proveedor>_provider.py,
+    api/          routes.py, schemas.py (Pydantic de request/response), errors.py, health.py,
+                  correlation.py, openapi.py
+    llm/          mock_provider.py, openai_compatible_provider.py,
                   factory.py (LlmProviderFactory), response_parser.py (ACL)
     persistence/  clasificacion_repository.py (MongoDB)
+    logs.py       logs JSON con correlationId
 prompts/          clasificacion_v1.txt
+scripts/          exportar_openapi.py (genera contracts/classification-service.yaml)
 tests/            data/tickets_eval.json, test_*.py
 ```
+Las interfaces que necesita la aplicación (`ports.py`) viven en `application`, no en `infrastructure`: las dependencias apuntan hacia adentro (`infrastructure → application → domain`). Los adapters de LLM van uno por contrato de API, no uno por proveedor (sección 12.1).
 
 **notification-service (NestJS)**
 ```
@@ -519,7 +529,7 @@ Si está `PENDIENTE_CLASIFICACION`: `clasificacion`, `prioridad`, `fechaLimiteSl
 // 400 VALIDACION | 502 LLM_RESPUESTA_INVALIDA | 504 LLM_TIMEOUT
 ```
 
-**`GET /api/clasificaciones?ticketId=<uuid>`** → lista (más reciente primero) de clasificaciones.
+**`GET /api/clasificaciones?ticketId=&page=0&size=20`** → página de clasificaciones (más reciente primero), con el formato de paginación de la sección 5. `ticketId` es un filtro opcional.
 
 **Flujo interno (`ClasificacionFacade`)**
 1. Validar request (Pydantic).
@@ -759,10 +769,15 @@ sequenceDiagram
 
 ### 12.1 Proveedores
 
-| `LLM_PROVIDER` | Descripción |
-|---|---|
-| `mock` | **Default.** Reglas por palabras clave, sin internet. Lo usan todos para desarrollar, los tests y el plan B de la demo |
-| `<real>` | Proveedor elegido por el equipo (pendiente). Lee `LLM_API_KEY` y `LLM_MODEL` |
+| `LLM_PROVIDER` | Adapter | URL base por defecto | API key | Descripción |
+|---|---|---|---|---|
+| `mock` | `MockLlmProvider` | — | No | **Default.** Reglas por palabras clave, sin internet. Lo usan todos para desarrollar, los tests, el CI y el plan B de la demo |
+| `ollama` | `OpenAICompatibleProvider` | `http://host.docker.internal:11434/v1` | No | Modelo local con [Ollama](https://ollama.com) instalado en la máquina. No sale nada a internet |
+| `groq` | `OpenAICompatibleProvider` | `https://api.groq.com/openai/v1` | Sí | API en internet con free tier. Cada integrante saca su key gratis en console.groq.com y la pone solo en su `.env` |
+
+- Ollama y Groq hablan el contrato de la API de OpenAI (`/chat/completions`), así que comparten adapter (Strategy por contrato). Sumar otro proveedor compatible es solo configuración: `LLM_BASE_URL` y `LLM_MODEL`.
+- `LLM_MODEL` elige el modelo de cada proveedor (por ejemplo, `qwen2.5:3b` en Ollama o `llama-3.3-70b-versatile` en Groq). `LLM_BASE_URL` pisa la URL por defecto.
+- Privacidad: el texto se enmascara antes de salir del servicio (sección 9.3), sea cual sea el proveedor.
 
 **Reglas del `MockLlmProvider`** (texto en minúsculas y sin tildes; se evalúan en orden):
 
@@ -884,6 +899,7 @@ REPORTING_DB_PASSWORD=reporting_pass
 LLM_PROVIDER=mock
 LLM_API_KEY=
 LLM_MODEL=
+LLM_BASE_URL=
 LLM_TIMEOUT_MS=5000
 PROMPT_VERSION=v1
 
@@ -899,7 +915,7 @@ LOG_LEVEL=INFO
 | api-gateway | `JWT_SECRET`, `USER_SERVICE_URL=http://user-service:8083`, `TICKET_SERVICE_URL=http://ticket-service:8081`, `CLASSIFICATION_SERVICE_URL=http://classification-service:8082`, `NOTIFICATION_SERVICE_URL=http://notification-service:8084`, `REPORTING_SERVICE_URL=http://reporting-service:8085` |
 | user-service | `DB_URL=jdbc:postgresql://postgres:5432/users_db`, `DB_USER=users_user`, `DB_PASSWORD`, `JWT_SECRET`, `JWT_EXPIRATION_MINUTES` |
 | ticket-service | `DB_URL=jdbc:postgresql://postgres:5432/tickets_db`, `DB_USER=tickets_user`, `DB_PASSWORD`, `CLASSIFICATION_URL=http://classification-service:8082`, `CLASSIFICATION_TIMEOUT_MS`, `EVENT_SUBSCRIBERS=http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos` |
-| classification-service | `MONGO_URI=mongodb://classification_user:<pass>@mongo:27017/classification_db`, `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TIMEOUT_MS`, `PROMPT_VERSION` |
+| classification-service | `MONGO_URI=mongodb://classification_user:<pass>@mongo:27017/classification_db`, `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LLM_TIMEOUT_MS`, `PROMPT_VERSION` |
 | notification-service | `MONGO_URI=mongodb://notifications_user:<pass>@mongo:27017/notifications_db` |
 | reporting-service | `MONGO_URI=mongodb://reporting_user:<pass>@mongo:27017/reporting_db` |
 
@@ -1056,7 +1072,7 @@ docker compose up -d --build --wait
 
 | Tema | Estado | Responsable |
 |---|---|---|
-| Proveedor de LLM real y quién aporta la API key | Pendiente | P4 propone el 30/9 |
+| Proveedor de LLM real y quién aporta la API key | Resuelto (v1.2): `ollama` local y `groq`; cada uno usa su propia key de Groq (sección 12.1) | P4 |
 | Fecha exacta de la Defensa 1 | Estimada 12/10 | Todos |
 | Confirmar lenguajes por integrante (Java/Python/Node) | Pendiente | Todos, 29/9 |
 | Nombres de integrantes por rol P1–P6 | Pendiente | Todos |
