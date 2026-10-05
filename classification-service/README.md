@@ -2,7 +2,7 @@
 
 Clasifica el texto de un ticket con un LLM: categoría, urgencia, impacto, módulo afectado,
 si requiere escalamiento, confianza y justificación. La IA sugiere y el dominio decide:
-este servicio nunca devuelve la prioridad (la calcula ticket-service).
+este servicio nunca devuelve la prioridad.
 
 | | |
 |---|---|
@@ -36,7 +36,8 @@ junto con el cambio:
 python -m scripts.exportar_openapi
 ```
 
-Cambiar el contrato requiere avisar en el grupo y la aprobación de P2 (ticket-service lo consume).
+Cambiar el contrato requiere avisar en el grupo y la aprobación de los dueños de los servicios
+que lo consumen.
 
 ## Configuración
 
@@ -52,6 +53,9 @@ Cambiar el contrato requiere avisar en el grupo y la aprobación de P2 (ticket-s
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` o `ERROR` |
 
 ## Estructura
+
+Estructura completa del servicio. Los archivos que todavía no existen se suman en las
+próximas tarjetas.
 
 ```
 app/
