@@ -1,0 +1,414 @@
+# Generado desde el codigo con: python -m scripts.exportar_openapi (classification-service).
+# No editar a mano: cambiar la API y volver a exportar.
+openapi: 3.1.0
+info:
+  title: UrgentIA - classification-service
+  description: |
+    Clasifica el texto de un ticket con un LLM (Model as a Service): categoria, urgencia, impacto,
+    modulo afectado, si requiere escalamiento, confianza y justificacion.
+    La IA sugiere y el dominio decide: este servicio nunca devuelve la prioridad.
+
+    Antes de llamar al LLM enmascara los datos personales (emails, telefonos y DNI). Lo que se
+    guarda ya esta enmascarado.
+
+    Es un servicio interno: desde afuera solo se accede a traves del api-gateway, con rol ADMIN.
+  version: 0.1.0
+servers:
+- url: http://localhost:8080
+  description: A traves del api-gateway (rol ADMIN)
+- url: http://localhost:8082
+  description: Directo al servicio (red interna)
+paths:
+  /health:
+    get:
+      tags:
+      - Health
+      summary: Estado del servicio
+      operationId: health
+      responses:
+        '200':
+          description: El servicio esta arriba
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+      security: []
+  /api/clasificaciones:
+    post:
+      tags:
+      - Clasificaciones
+      summary: Clasificar un ticket
+      description: Enmascara los datos personales, consulta al LLM, valida la respuesta, la guarda y la devuelve.
+        Si la respuesta del LLM no es valida, reintenta una vez mientras quede tiempo. El tiempo maximo de espera
+        del LLM es configurable; si se supera, responde 504.
+      operationId: clasificar
+      parameters:
+      - name: X-Correlation-Id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Id para seguir el pedido en los logs. Si no viene, se genera uno.
+          title: X-Correlation-Id
+        description: Id para seguir el pedido en los logs. Si no viene, se genera uno.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClasificarRequest'
+      responses:
+        '200':
+          description: Clasificacion sugerida por la IA
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClasificacionResponse'
+        '400':
+          description: VALIDACION - body o parametros invalidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: ERROR_INTERNO - cualquier otro error (por ejemplo, MongoDB caido)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: LLM_RESPUESTA_INVALIDA - el LLM devolvio algo que no valida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '504':
+          description: LLM_TIMEOUT - el LLM no respondio a tiempo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+      - Clasificaciones
+      summary: Listar clasificaciones
+      description: Clasificaciones paginadas, la mas reciente primero. Con ticketId, solo las de ese ticket.
+      operationId: listarClasificaciones
+      parameters:
+      - name: ticketId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: Filtra por ticket (UUID)
+          title: Ticketid
+        description: Filtra por ticket (UUID)
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          description: Numero de pagina, desde 0
+          default: 0
+          title: Page
+        description: Numero de pagina, desde 0
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          description: Tamaño de pagina
+          default: 20
+          title: Size
+        description: Tamaño de pagina
+      - name: X-Correlation-Id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Id para seguir el pedido en los logs. Si no viene, se genera uno.
+          title: X-Correlation-Id
+        description: Id para seguir el pedido en los logs. Si no viene, se genera uno.
+      responses:
+        '200':
+          description: Pagina de clasificaciones (mas reciente primero)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaClasificaciones'
+        '400':
+          description: VALIDACION - body o parametros invalidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: ERROR_INTERNO - cualquier otro error (por ejemplo, MongoDB caido)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    Categoria:
+      type: string
+      enum:
+      - INCIDENTE
+      - SOLICITUD
+      - CONSULTA
+      - BUG
+      title: Categoria
+    ClasificacionResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: ObjectId de MongoDB como string
+        ticketId:
+          type: string
+          format: uuid
+          title: Ticketid
+        categoria:
+          $ref: '#/components/schemas/Categoria'
+        urgencia:
+          $ref: '#/components/schemas/Urgencia'
+        impacto:
+          $ref: '#/components/schemas/Impacto'
+        moduloAfectado:
+          $ref: '#/components/schemas/ModuloAfectado'
+        requiereEscalamiento:
+          type: boolean
+          title: Requiereescalamiento
+          description: 'true si el caso parece critico: produccion caida, muchos usuarios bloqueados, perdida de
+            datos o riesgo de seguridad'
+        confianza:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Confianza
+          description: Que tan segura esta la IA de la clasificacion
+        justificacion:
+          type: string
+          maxLength: 300
+          title: Justificacion
+        proveedor:
+          type: string
+          title: Proveedor
+          description: Valor de LLM_PROVIDER con el que se clasifico
+        modelo:
+          type: string
+          title: Modelo
+        versionPrompt:
+          type: string
+          title: Versionprompt
+        latenciaMs:
+          type: integer
+          title: Latenciams
+          description: Tiempo total de la llamada al LLM, reintento incluido
+        fecha:
+          type: string
+          format: date-time
+          title: Fecha
+      type: object
+      required:
+      - id
+      - ticketId
+      - categoria
+      - urgencia
+      - impacto
+      - moduloAfectado
+      - requiereEscalamiento
+      - confianza
+      - justificacion
+      - proveedor
+      - modelo
+      - versionPrompt
+      - latenciaMs
+      - fecha
+      title: ClasificacionResponse
+      description: Lo que sugiere la IA. No incluye la prioridad.
+      examples:
+      - categoria: INCIDENTE
+        confianza: 0.93
+        fecha: '2026-10-05T14:03:11Z'
+        id: 66f7c2a1e4b0a1b2c3d4e5f6
+        impacto: ALTO
+        justificacion: Caída total del login en producción que afecta a todos los usuarios
+        latenciaMs: 812
+        modelo: mock-v1
+        moduloAfectado: AUTENTICACION
+        proveedor: mock
+        requiereEscalamiento: true
+        ticketId: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        urgencia: ALTA
+        versionPrompt: v1
+    ClasificarRequest:
+      properties:
+        ticketId:
+          type: string
+          format: uuid
+          title: Ticketid
+        titulo:
+          type: string
+          maxLength: 120
+          minLength: 5
+          title: Titulo
+        descripcion:
+          type: string
+          maxLength: 2000
+          minLength: 10
+          title: Descripcion
+      type: object
+      required:
+      - ticketId
+      - titulo
+      - descripcion
+      title: ClasificarRequest
+      examples:
+      - descripcion: Producción caída, todos los usuarios bloqueados en el login desde las 9
+        ticketId: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        titulo: No puede ingresar nadie
+    DetalleError:
+      properties:
+        campo:
+          type: string
+          title: Campo
+        mensaje:
+          type: string
+          title: Mensaje
+      type: object
+      required:
+      - campo
+      - mensaje
+      title: DetalleError
+    ErrorResponse:
+      properties:
+        codigo:
+          type: string
+          enum:
+          - VALIDACION
+          - NO_ENCONTRADO
+          - LLM_RESPUESTA_INVALIDA
+          - LLM_TIMEOUT
+          - ERROR_INTERNO
+          title: Codigo
+        mensaje:
+          type: string
+          title: Mensaje
+        detalles:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/DetalleError'
+            type: array
+          - type: 'null'
+          title: Detalles
+          description: Solo en errores de validacion
+        timestamp:
+          type: string
+          format: date-time
+          title: Timestamp
+        path:
+          type: string
+          title: Path
+        correlationId:
+          type: string
+          title: Correlationid
+      type: object
+      required:
+      - codigo
+      - mensaje
+      - timestamp
+      - path
+      - correlationId
+      title: ErrorResponse
+      description: Formato comun de error (seccion 5.3).
+    HealthResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+        service:
+          type: string
+          title: Service
+        version:
+          type: string
+          title: Version
+      type: object
+      required:
+      - status
+      - service
+      - version
+      title: HealthResponse
+    Impacto:
+      type: string
+      enum:
+      - ALTO
+      - MEDIO
+      - BAJO
+      title: Impacto
+    ModuloAfectado:
+      type: string
+      enum:
+      - AUTENTICACION
+      - FACTURACION
+      - PAGOS
+      - REPORTES
+      - INFRAESTRUCTURA
+      - BASE_DE_DATOS
+      - INTEGRACIONES
+      - OTRO
+      title: ModuloAfectado
+    PaginaClasificaciones:
+      properties:
+        content:
+          items:
+            $ref: '#/components/schemas/ClasificacionResponse'
+          type: array
+          title: Content
+        page:
+          type: integer
+          title: Page
+          description: Numero de pagina, desde 0
+        size:
+          type: integer
+          title: Size
+        totalElements:
+          type: integer
+          title: Totalelements
+        totalPages:
+          type: integer
+          title: Totalpages
+      type: object
+      required:
+      - content
+      - page
+      - size
+      - totalElements
+      - totalPages
+      title: PaginaClasificaciones
+      description: Pagina de clasificaciones con el formato comun de paginacion (seccion 5).
+    Urgencia:
+      type: string
+      enum:
+      - ALTA
+      - MEDIA
+      - BAJA
+      title: Urgencia
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token de POST /api/auth/login (user-service). Lo valida el gateway; solo ADMIN.
+security:
+- bearer: []
