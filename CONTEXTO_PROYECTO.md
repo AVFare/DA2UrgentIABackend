@@ -6,7 +6,7 @@
 
 **Cambios de la versión 1.2**
 
-- classification-service: la interfaz `LlmProvider` y la del repositorio pasan a `application/ports.py`, para que la capa de aplicación no dependa de infraestructura. Los adapters de LLM van uno por contrato de API (sección 4.1).
+- classification-service: la interfaz `LlmProvider` y la del repositorio pasan a `application/ports/` (un archivo por puerto), para que la capa de aplicación no dependa de infraestructura. Los adapters de LLM van uno por contrato de API (sección 4.1).
 - Proveedores de LLM definidos: `mock`, `ollama` y `groq` (sección 12.1). Se suma la variable opcional `LLM_BASE_URL` (sección 14).
 - `GET /api/clasificaciones`: `ticketId` pasa a ser un filtro opcional y la respuesta va paginada (sección 9.3).
 
@@ -146,7 +146,7 @@ infrastructure/
 app/
   main.py, config.py (variables de entorno)
   domain/         enums.py, models.py (Clasificacion y sus invariantes)
-  application/    ports.py (LlmProvider, ClasificacionRepository), clasificacion_facade.py, masking.py
+  application/    ports/ (llm_provider.py, clasificacion_repository.py), clasificacion_facade.py, masking.py
   infrastructure/
     api/          routes.py, schemas.py (Pydantic de request/response), errors.py, health.py,
                   correlation.py, openapi.py
@@ -158,7 +158,7 @@ prompts/          clasificacion_v1.txt
 scripts/          exportar_openapi.py (genera contracts/classification-service.yaml)
 tests/            data/tickets_eval.json, test_*.py
 ```
-Las interfaces que necesita la aplicación (`ports.py`) viven en `application`, no en `infrastructure`: las dependencias apuntan hacia adentro (`infrastructure → application → domain`). Los adapters de LLM van uno por contrato de API, no uno por proveedor (sección 12.1).
+Las dependencias apuntan hacia adentro (`infrastructure → application → domain`): `application/ports/` define las interfaces y los adapters de `infrastructure` las implementan. Los adapters de LLM van uno por contrato de API (sección 12.1).
 
 **notification-service (NestJS)**
 ```
