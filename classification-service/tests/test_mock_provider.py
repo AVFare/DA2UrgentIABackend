@@ -4,7 +4,7 @@ import json
 import pytest
 
 from app.application.ports.llm_provider import PedidoLlm
-from app.domain.models import Clasificacion
+from app.domain.enums import Categoria
 from app.infrastructure.llm.mock_provider import MockLlmProvider, clasificar_por_reglas, normalizar
 
 
@@ -77,7 +77,7 @@ def test_confianza_fija_y_justificacion_con_la_regla():
     assert resultado["justificacion"] == "Regla del mock: pedido de algo nuevo"
 
 
-def test_el_provider_devuelve_json_que_cumple_el_dominio():
+def test_el_provider_devuelve_la_clasificacion_y_el_json_crudo():
     pedido = PedidoLlm(
         titulo="No puede ingresar nadie",
         descripcion="Producción caída, todos los usuarios bloqueados en el login",
@@ -86,16 +86,8 @@ def test_el_provider_devuelve_json_que_cumple_el_dominio():
 
     respuesta = asyncio.run(MockLlmProvider().consultar(pedido))
 
-    assert respuesta.modelo == "mock-v1"
-    datos = json.loads(respuesta.texto)
-    clasificacion = Clasificacion(
-        categoria=datos["categoria"],
-        urgencia=datos["urgencia"],
-        impacto=datos["impacto"],
-        modulo_afectado=datos["moduloAfectado"],
-        requiere_escalamiento=datos["requiereEscalamiento"],
-        confianza=datos["confianza"],
-        justificacion=datos["justificacion"],
-    )
-    assert clasificacion.requiere_escalamiento is True
     assert MockLlmProvider.nombre == "mock"
+    assert respuesta.modelo == "mock-v1"
+    assert respuesta.clasificacion.categoria is Categoria.INCIDENTE
+    assert respuesta.clasificacion.requiere_escalamiento is True
+    assert json.loads(respuesta.texto_crudo)["moduloAfectado"] == "AUTENTICACION"

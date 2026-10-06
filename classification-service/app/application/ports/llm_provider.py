@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from typing import Protocol
 
+from app.domain.models import Clasificacion
+
 
 @dataclass(frozen=True)
 class PedidoLlm:
@@ -15,10 +17,9 @@ class PedidoLlm:
 
 @dataclass(frozen=True)
 class RespuestaLlm:
-    """Respuesta cruda del LLM, sin validar: la valida response_parser (ACL)."""
-
-    texto: str
+    clasificacion: Clasificacion
     modelo: str
+    texto_crudo: str
 
 
 class LlmProvider(Protocol):
@@ -27,5 +28,9 @@ class LlmProvider(Protocol):
     nombre: str
 
     async def consultar(self, pedido: PedidoLlm) -> RespuestaLlm:
-        """Devuelve la respuesta cruda del LLM. El timeout lo controla quien llama."""
+        """Clasifica el pedido. El timeout lo controla quien llama.
+
+        Lanza LlmRespuestaInvalidaError si la respuesta no es una clasificacion valida y
+        LlmNoDisponibleError si no se pudo consultar al LLM.
+        """
         ...
