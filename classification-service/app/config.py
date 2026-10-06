@@ -10,6 +10,7 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SERVICE_NAME = "classification-service"
+VERSION = "0.1.0"
 PUERTO = 8082
 
 

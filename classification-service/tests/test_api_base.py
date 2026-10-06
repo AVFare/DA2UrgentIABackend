@@ -1,5 +1,9 @@
 """Tests de la base de la API: health, correlationId, formato comun de error y OpenAPI."""
 
+from fastapi.testclient import TestClient
+
+from app.main import create_app
+
 PEDIDO_VALIDO = {
     "ticketId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
     "titulo": "No puede ingresar nadie",
@@ -72,13 +76,19 @@ def test_ruta_inexistente_responde_404_no_encontrado(client):
     assert respuesta.json()["codigo"] == "NO_ENCONTRADO"
 
 
-def test_error_inesperado_responde_500_sin_stacktrace(client):
-    # Mientras no este la Facade, clasificar lanza NotImplementedError.
-    respuesta = client.post("/api/clasificaciones", json=PEDIDO_VALIDO)
+def test_error_inesperado_responde_500_sin_stacktrace():
+    app = create_app()
+
+    @app.get("/explota")
+    def explota():
+        raise RuntimeError("detalle interno")
+
+    respuesta = TestClient(app, raise_server_exceptions=False).get("/explota")
 
     assert respuesta.status_code == 500
     error = respuesta.json()
     assert error["codigo"] == "ERROR_INTERNO"
+    assert "detalle interno" not in respuesta.text
     assert "Traceback" not in respuesta.text
 
 

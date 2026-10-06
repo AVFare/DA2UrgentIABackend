@@ -54,24 +54,25 @@ que lo consumen.
 
 ## Estructura
 
-Estructura completa del servicio. Los archivos que todavía no existen se suman en las
-próximas tarjetas.
-
 ```
 app/
   main.py, config.py
   domain/           enums.py, models.py (Clasificacion y sus invariantes)
-  application/      ports.py (LlmProvider, ClasificacionRepository), clasificacion_facade.py, masking.py
+  application/
+    ports/          llm_provider.py (LlmProvider): interfaces que implementa infrastructure
+    masking.py      enmascarado de datos personales
   infrastructure/
-    api/            routes.py, schemas.py, errors.py, health.py, correlation.py, openapi.py
-    llm/            mock_provider.py, openai_compatible_provider.py, factory.py, response_parser.py
-    persistence/    clasificacion_repository.py
+    api/
+      routes/       clasificaciones.py, health.py: endpoints
+      schemas/      base.py, clasificacion.py, error.py, health.py: DTOs de request y response
+      errors.py     formato común de error
+      correlation.py  middleware X-Correlation-Id
+      openapi.py    ajustes del OpenAPI
+    llm/            mock_provider.py (MockLlmProvider)
     logs.py         logs JSON con correlationId
-prompts/            clasificacion_v1.txt
 scripts/            exportar_openapi.py
 tests/
 ```
 
-Las dependencias apuntan hacia adentro: `infrastructure → application → domain`. Las
-interfaces que necesita la aplicación (`ports.py`) viven en `application`, no en
-`infrastructure`.
+Las dependencias apuntan hacia adentro: `infrastructure → application → domain`.
+`application/ports/` define las interfaces que implementan los adapters de `infrastructure`.

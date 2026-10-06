@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.infrastructure.api.correlation import obtener_correlation_id
-from app.infrastructure.api.schemas import CodigoError, DetalleError, ErrorResponse
+from app.infrastructure.api.schemas.error import CodigoError, DetalleError, ErrorResponse
 
 log = logging.getLogger(__name__)
 

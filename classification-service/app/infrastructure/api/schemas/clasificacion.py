@@ -1,20 +1,12 @@
-"""Modelos Pydantic de request y response de la API (contrato de la seccion 9.3).
-
-Los atributos van en snake_case y se serializan en camelCase, como pide la seccion 5.
-"""
+"""DTOs de /api/clasificaciones (contrato de la seccion 9.3)."""
 
 from datetime import datetime
-from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
-from pydantic.alias_generators import to_camel
+from pydantic import ConfigDict, Field
 
 from app.domain.enums import Categoria, Impacto, ModuloAfectado, Urgencia
-
-
-class CamelModel(BaseModel):
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+from app.infrastructure.api.schemas.base import CamelModel
 
 
 class ClasificarRequest(CamelModel):
@@ -88,22 +80,3 @@ class PaginaClasificaciones(CamelModel):
     size: int
     total_elements: int
     total_pages: int
-
-
-CodigoError = Literal["VALIDACION", "NO_ENCONTRADO", "LLM_RESPUESTA_INVALIDA", "LLM_TIMEOUT", "ERROR_INTERNO"]
-
-
-class DetalleError(BaseModel):
-    campo: str
-    mensaje: str
-
-
-class ErrorResponse(CamelModel):
-    """Formato comun de error (seccion 5.3)."""
-
-    codigo: CodigoError
-    mensaje: str
-    detalles: list[DetalleError] | None = Field(default=None, description="Solo en errores de validacion")
-    timestamp: datetime
-    path: str
-    correlation_id: str
