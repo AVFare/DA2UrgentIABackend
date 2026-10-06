@@ -251,7 +251,7 @@ components:
         requiereEscalamiento: true
         ticketId: 7c9e6679-7425-40de-944b-e07fc1f90ae7
         urgencia: ALTA
-        versionPrompt: v1
+        versionPrompt: full
     ClasificarRequest:
       properties:
         ticketId:

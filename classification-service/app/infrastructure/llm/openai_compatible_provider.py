@@ -75,7 +75,8 @@ class OpenAICompatibleProvider:
             respuesta = await self._cliente.post(self._url, json=cuerpo, headers=self._headers)
             respuesta.raise_for_status()
         except httpx2.HTTPStatusError as error:
-            raise LlmNoDisponibleError(f"{self.nombre} respondio HTTP {error.response.status_code}") from error
+            status = error.response.status_code
+            raise LlmNoDisponibleError(f"{self.nombre} respondio HTTP {status}", status_http=status) from error
         except httpx2.RequestError as error:
             raise LlmNoDisponibleError(f"no se pudo conectar con {self.nombre} ({type(error).__name__})") from error
         try:

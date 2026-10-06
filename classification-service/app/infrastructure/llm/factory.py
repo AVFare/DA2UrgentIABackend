@@ -24,7 +24,7 @@ class _ProveedorOpenAI:
 _PROVEEDORES_OPENAI = {
     "ollama": _ProveedorOpenAI("http://host.docker.internal:11434/v1", "qwen2.5:1.5b",
                                requiere_api_key=False, precalentar_al_iniciar=True),
-    "groq": _ProveedorOpenAI("https://api.groq.com/openai/v1", "llama-3.3-70b-versatile",
+    "groq": _ProveedorOpenAI("https://api.groq.com/openai/v1", "qwen/qwen3.8-27b",
                              requiere_api_key=True, precalentar_al_iniciar=False),
 }
 

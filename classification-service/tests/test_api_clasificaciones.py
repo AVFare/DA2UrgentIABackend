@@ -23,8 +23,8 @@ def crear_cliente(llm=None) -> tuple[TestClient, RepositorioEnMemoria]:
     facade = ClasificacionFacade(
         llm=llm or MockLlmProvider(),
         repositorio=repositorio,
-        plantilla=cargar_plantilla("v1"),
-        version_prompt="v1",
+        plantilla=cargar_plantilla("full"),
+        version_prompt="full",
         timeout_llm_s=5,
     )
     return TestClient(create_app(facade), raise_server_exceptions=False), repositorio
@@ -41,7 +41,7 @@ def test_clasifica_el_caso_de_la_demo():
                                      "requiereEscalamiento", "confianza", "proveedor", "modelo", "versionPrompt")} == {
         "ticketId": TICKET_ID, "categoria": "INCIDENTE", "urgencia": "ALTA", "impacto": "ALTO",
         "moduloAfectado": "AUTENTICACION", "requiereEscalamiento": True, "confianza": 0.7,
-        "proveedor": "mock", "modelo": "mock-v1", "versionPrompt": "v1",
+        "proveedor": "mock", "modelo": "mock-v1", "versionPrompt": "full",
     }
     assert cuerpo["id"] == repositorio.registros[0].id
     assert cuerpo["fecha"].endswith("Z")
