@@ -1,11 +1,27 @@
 import copy
 import uuid
 
+import mongomock
 import pytest
 from fastapi.testclient import TestClient
 
+from app import db as db_module
+from app.config import settings
 from app.main import create_app
+from app.repositories.evento_procesado_repository import EventoProcesadoRepository
+from app.repositories.notificacion_repository import NotificacionRepository
 from app.schemas.evento import EJEMPLO_SOBRE, InputEvento
+
+
+@pytest.fixture
+def mongo(monkeypatch):
+    """Base de test en memoria: reemplaza el cliente real de Mongo y crea los indices como al arrancar."""
+    cliente = mongomock.MongoClient(tz_aware=True)
+    monkeypatch.setattr(db_module, "_client", cliente)
+    db = cliente[settings.mongo_db]
+    NotificacionRepository(db).ensure_indexes()
+    EventoProcesadoRepository(db).ensure_indexes()
+    return db
 
 
 @pytest.fixture
