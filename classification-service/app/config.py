@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # Opcional: pisa la URL por defecto del proveedor.
     llm_base_url: str = ""
     llm_timeout_ms: int = Field(default=5000, gt=0)
-    prompt_version: str = "v1"
+    prompt_version: str = "v2"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     @field_validator("llm_provider", "log_level", mode="before")

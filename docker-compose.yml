@@ -85,7 +85,7 @@ services:
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-5000}
-      PROMPT_VERSION: ${PROMPT_VERSION:-v1}
+      PROMPT_VERSION: ${PROMPT_VERSION:-v2}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     # Para LLM_PROVIDER=ollama: llega al Ollama instalado en la maquina (en Linux no existe por defecto).
     extra_hosts:

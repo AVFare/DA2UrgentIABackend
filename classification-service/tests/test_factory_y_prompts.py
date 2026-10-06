@@ -48,8 +48,9 @@ def test_groq_con_api_key():
     assert provider._precalentar_al_iniciar is False
 
 
-def test_carga_el_prompt_v1_con_sus_marcadores():
-    plantilla = cargar_plantilla("v1")
+@pytest.mark.parametrize("version", ["v1", "v2"])
+def test_carga_cada_prompt_con_sus_marcadores(version):
+    plantilla = cargar_plantilla(version)
 
     assert plantilla.count("{titulo}") == 1
     assert plantilla.count("{descripcion}") == 1

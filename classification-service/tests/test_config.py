@@ -18,7 +18,7 @@ def test_sin_variables_usa_los_defaults():
 
     assert settings.llm_provider == "mock"
     assert settings.llm_timeout_ms == 5000
-    assert settings.prompt_version == "v1"
+    assert settings.prompt_version == "v2"
     assert settings.log_level == "INFO"
     assert settings.llm_api_key.get_secret_value() == ""
 
@@ -26,14 +26,14 @@ def test_sin_variables_usa_los_defaults():
 def test_lee_las_variables_de_entorno(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "Groq")
     monkeypatch.setenv("LLM_API_KEY", "secreta")
-    monkeypatch.setenv("LLM_MODEL", "llama-3.3-70b-versatile")
+    monkeypatch.setenv("LLM_MODEL", "qwen/qwen3.8-27b")
     monkeypatch.setenv("LLM_TIMEOUT_MS", "3000")
     monkeypatch.setenv("LOG_LEVEL", "debug")
 
     settings = Settings()
 
     assert settings.llm_provider == "groq"
-    assert settings.llm_model == "llama-3.3-70b-versatile"
+    assert settings.llm_model == "qwen/qwen3.8-27b"
     assert settings.llm_timeout_ms == 3000
     assert settings.log_level == "DEBUG"
     assert "secreta" not in repr(settings)
