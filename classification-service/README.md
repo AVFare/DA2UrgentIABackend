@@ -99,8 +99,8 @@ modelo y procesar la parte fija del prompt tarda varios segundos. Sin Docker, ag
 
 | `PROMPT_VERSION` | Uso |
 |---|---|
-| `v2` | Default. Mejor resultado con el proveedor real |
-| `v1` | Para modelos locales chicos (por ejemplo, `qwen2.5:1.5b` en CPU): más corto, responde más rápido |
+| `full` | Default. Criterios detallados de impacto y escalamiento; mejor resultado con el proveedor real |
+| `lite` | Para modelos locales chicos (por ejemplo, `qwen2.5:1.5b` en CPU): más corto, responde más rápido |
 
 ## Evaluación (RIA01)
 
@@ -110,11 +110,11 @@ en `tests/data/resultados/evaluacion_<proveedor>_<modelo>_<prompt>.{json,md}` (c
 
 ```bash
 LLM_PROVIDER=groq LLM_API_KEY=... python -m scripts.evaluar
-LLM_PROVIDER=ollama LLM_BASE_URL=http://localhost:11434/v1 PROMPT_VERSION=v1 python -m scripts.evaluar
+LLM_PROVIDER=ollama LLM_BASE_URL=http://localhost:11434/v1 PROMPT_VERSION=lite python -m scripts.evaluar
 ```
 
 Criterio de aceptación: ≥ 80% de acierto en `categoria` y ≥ 90% en `requiereEscalamiento`.
-Con Groq `qwen/qwen3.8-27b` y el prompt `v2` da 100% y 100%. El mismo criterio corre como test
+Con Groq `qwen/qwen3.8-27b` y el prompt `full` da 100% y 100%. El mismo criterio corre como test
 con `EVALUAR_RIA01=1 pytest tests/test_evaluacion.py`. Si el proveedor responde 429 (límite de
 pedidos por minuto del plan gratuito), el evaluador espera y reintenta.
 
@@ -128,7 +128,7 @@ pedidos por minuto del plan gratuito), el evaluador espera y reintenta.
 | `LLM_MODEL` | según el proveedor | Pisa el modelo por defecto |
 | `LLM_BASE_URL` | según el proveedor | Pisa la URL por defecto |
 | `LLM_TIMEOUT_MS` | `5000` | Timeout de cada llamada al LLM |
-| `PROMPT_VERSION` | `v2` | Lee `prompts/clasificacion_{PROMPT_VERSION}.txt` |
+| `PROMPT_VERSION` | `full` | Lee `prompts/clasificacion_{PROMPT_VERSION}.txt` |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` o `ERROR` |
 
 ## Estructura
@@ -155,7 +155,7 @@ app/
     persistence/    clasificacion_repository.py (Repository sobre MongoDB)
     prompts.py      lectura de las plantillas del prompt
     logs.py         logs JSON con correlationId
-prompts/            clasificacion_v1.txt, clasificacion_v2.txt
+prompts/            clasificacion_full.txt, clasificacion_lite.txt
 scripts/            exportar_openapi.py, evaluar.py (evaluación RIA01)
 tests/              fakes.py (dobles de los puertos), test_*.py, data/tickets_eval.json (set de evaluación)
 ```

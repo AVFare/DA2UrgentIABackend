@@ -47,7 +47,7 @@ class ClasificacionResponse(CamelModel):
                     "justificacion": "Caída total del login en producción que afecta a todos los usuarios",
                     "proveedor": "mock",
                     "modelo": "mock-v1",
-                    "versionPrompt": "v1",
+                    "versionPrompt": "full",
                     "latenciaMs": 812,
                     "fecha": "2026-10-05T14:03:11Z",
                 }

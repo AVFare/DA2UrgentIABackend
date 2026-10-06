@@ -48,7 +48,7 @@ def test_groq_con_api_key():
     assert provider._precalentar_al_iniciar is False
 
 
-@pytest.mark.parametrize("version", ["v1", "v2"])
+@pytest.mark.parametrize("version", ["full", "lite"])
 def test_carga_cada_prompt_con_sus_marcadores(version):
     plantilla = cargar_plantilla(version)
 
@@ -58,5 +58,5 @@ def test_carga_cada_prompt_con_sus_marcadores(version):
 
 
 def test_version_de_prompt_inexistente():
-    with pytest.raises(FileNotFoundError, match="clasificacion_v99.txt"):
-        cargar_plantilla("v99")
+    with pytest.raises(FileNotFoundError, match="clasificacion_inexistente.txt"):
+        cargar_plantilla("inexistente")

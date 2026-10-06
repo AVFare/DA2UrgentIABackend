@@ -6,7 +6,7 @@
 
 **Cambios de la versión 1.3**
 
-- classification-service: el prompt por defecto pasa a ser `v2` (`PROMPT_VERSION=v2`), que precisa cuándo el impacto es ALTO y cuándo no se escala; `v1` queda para modelos locales chicos (sección 12.2).
+- classification-service: hay dos prompts, `full` (default, `PROMPT_VERSION=full`), que precisa cuándo el impacto es ALTO y cuándo no se escala, y `lite`, para modelos locales chicos (sección 12.2).
 - Set de evaluación completo (20 casos) y resultados de RIA01 por proveedor y modelo (sección 12.3).
 - Groq: modelo por defecto `qwen/qwen3.8-27b` (sección 12.1).
 
@@ -160,7 +160,7 @@ app/
                   factory.py (LlmProviderFactory), response_parser.py (ACL)
     persistence/  clasificacion_repository.py (MongoDB)
     logs.py       logs JSON con correlationId
-prompts/          clasificacion_v1.txt, clasificacion_v2.txt
+prompts/          clasificacion_full.txt, clasificacion_lite.txt
 scripts/          exportar_openapi.py (genera contracts/classification-service.yaml)
 tests/            data/tickets_eval.json, test_*.py
 ```
@@ -528,7 +528,7 @@ Si está `PENDIENTE_CLASIFICACION`: `clasificacion`, `prioridad`, `fechaLimiteSl
   "justificacion": "Caída total del login en producción que afecta a todos los usuarios",
   "proveedor": "mock",
   "modelo": "mock-v1",
-  "versionPrompt": "v1",
+  "versionPrompt": "full",
   "latenciaMs": 812,
   "fecha": "2026-10-05T14:03:11Z"
 }
@@ -803,12 +803,12 @@ Módulo por palabra clave: "login", "contrasena", "ingresar", "usuario" → AUTE
 
 | Versión | Uso |
 |---|---|
-| `v2` | **Default.** Mejor resultado con el proveedor real (sección 12.3) |
-| `v1` | Para modelos locales chicos (por ejemplo, `qwen2.5:1.5b` en CPU): prompt más corto, responde más rápido |
+| `full` | **Default.** Mejor resultado con el proveedor real (sección 12.3) |
+| `lite` | Para modelos locales chicos (por ejemplo, `qwen2.5:1.5b` en CPU): prompt más corto, responde más rápido |
 
-`v2` parte de `v1` y cambia tres cosas: el impacto ALTO es solo si afecta a toda la empresa, a todos los usuarios o a todos los clientes; dice explícitamente qué no se escala (un área, una sucursal, un grupo de usuarios o un riesgo a futuro); y suma un ejemplo de incidente de un área que no se escala.
+`full` parte de `lite` y cambia tres cosas: el impacto ALTO es solo si afecta a toda la empresa, a todos los usuarios o a todos los clientes; dice explícitamente qué no se escala (un área, una sucursal, un grupo de usuarios o un riesgo a futuro); y suma un ejemplo de incidente de un área que no se escala.
 
-Prompt `v2` (`prompts/clasificacion_v2.txt`):
+Prompt `full` (`prompts/clasificacion_full.txt`):
 
 ```text
 Sos un analista de mesa de ayuda de una empresa de software. Tu tarea es clasificar
@@ -893,12 +893,12 @@ Descripción: {descripcion}
 
 | Proveedor / modelo | Prompt | categoria | requiereEscalamiento | prioridad | Latencia mediana | RIA01 |
 |---|---|---|---|---|---|---|
-| Ollama `qwen2.5:1.5b` (local, CPU) | v1 | 80% | 80% | 75% | 3,7 s | no |
-| Ollama `qwen2.5:1.5b` (local, CPU) | v2 | 80% | 85% | 75% | 4,7 s | no |
-| Groq `openai/gpt-oss-20b` | v1 | 100% | 80% | 70% | 0,7 s | no |
-| Groq `openai/gpt-oss-120b` | v1 | 100% | 85% | 80% | 1,2 s | no |
-| Groq `qwen/qwen3.8-27b` | v1 | 100% | 95% | 85% | 0,6 s | sí |
-| **Groq `qwen/qwen3.8-27b`** | **v2** | **100%** | **100%** | **95%** | **0,6 s** | **sí** |
+| Ollama `qwen2.5:1.5b` (local, CPU) | lite | 80% | 80% | 75% | 3,7 s | no |
+| Ollama `qwen2.5:1.5b` (local, CPU) | full | 80% | 85% | 75% | 4,7 s | no |
+| Groq `openai/gpt-oss-20b` | lite | 100% | 80% | 70% | 0,7 s | no |
+| Groq `openai/gpt-oss-120b` | lite | 100% | 85% | 80% | 1,2 s | no |
+| Groq `qwen/qwen3.8-27b` | lite | 100% | 95% | 85% | 0,6 s | sí |
+| **Groq `qwen/qwen3.8-27b`** | **full** | **100%** | **100%** | **95%** | **0,6 s** | **sí** |
 
 Los errores de escalamiento de los modelos chicos son todos de más (escalan casos de un área); ningún modelo dejó sin escalar un caso crítico.
 **Caso de privacidad (test de `masking.py`):** "Soy Juan, mi mail es juan.perez@empresa.com y mi celular 11-5555-1234, DNI 30.123.456" → no debe quedar ningún dato original en el texto enviado ni en Mongo.
@@ -946,7 +946,7 @@ LLM_API_KEY=
 LLM_MODEL=
 LLM_BASE_URL=
 LLM_TIMEOUT_MS=5000
-PROMPT_VERSION=v2
+PROMPT_VERSION=full
 
 # Integración
 CLASSIFICATION_TIMEOUT_MS=7000

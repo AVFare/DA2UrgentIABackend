@@ -32,7 +32,7 @@ def registro(ticket_id: UUID, minutos: int) -> RegistroClasificacion:
         clasificacion=CLASIFICACION_CRITICA,
         proveedor="mock",
         modelo="mock-v1",
-        version_prompt="v1",
+        version_prompt="full",
         latencia_ms=812,
         fecha=INICIO + timedelta(minutes=minutos),
         texto_enmascarado="Login\nMi mail es [EMAIL]",

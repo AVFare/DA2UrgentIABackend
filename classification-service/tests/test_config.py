@@ -18,7 +18,7 @@ def test_sin_variables_usa_los_defaults():
 
     assert settings.llm_provider == "mock"
     assert settings.llm_timeout_ms == 5000
-    assert settings.prompt_version == "v2"
+    assert settings.prompt_version == "full"
     assert settings.log_level == "INFO"
     assert settings.llm_api_key.get_secret_value() == ""
 

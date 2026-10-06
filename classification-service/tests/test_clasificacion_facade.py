@@ -18,7 +18,7 @@ def crear_facade(llm, repositorio=None, reloj=None, timeout_llm_s=5.0) -> Clasif
         llm=llm,
         repositorio=repositorio or RepositorioEnMemoria(),
         plantilla=PLANTILLA,
-        version_prompt="v1",
+        version_prompt="full",
         timeout_llm_s=timeout_llm_s,
         reloj=reloj or RelojFalso(),
         ahora=lambda: AHORA,
@@ -49,7 +49,7 @@ def test_clasifica_guarda_y_devuelve_el_registro_completo():
     assert registro.id is not None
     assert registro.ticket_id == TICKET_ID
     assert registro.clasificacion == CLASIFICACION_CRITICA
-    assert (registro.proveedor, registro.modelo, registro.version_prompt) == ("falso", "modelo-falso", "v1")
+    assert (registro.proveedor, registro.modelo, registro.version_prompt) == ("falso", "modelo-falso", "full")
     assert registro.latencia_ms == 812
     assert registro.fecha == AHORA.replace(microsecond=0)
     assert repositorio.registros == [registro]

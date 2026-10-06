@@ -57,7 +57,7 @@ def test_el_set_cubre_todas_las_categorias_y_casos_de_escalamiento():
 
 
 def test_el_evaluador_mide_y_resume_con_el_mock(tmp_path):
-    evaluacion = asyncio.run(evaluar(MockLlmProvider(), cargar_plantilla("v1"), "v1", CASOS))
+    evaluacion = asyncio.run(evaluar(MockLlmProvider(), cargar_plantilla("full"), "full", CASOS))
 
     assert (evaluacion.proveedor, evaluacion.modelo) == ("mock", "mock-v1")
     assert len(evaluacion.casos) == 20
@@ -66,8 +66,8 @@ def test_el_evaluador_mide_y_resume_con_el_mock(tmp_path):
     resumen = resumen_markdown(evaluacion)
     assert "| categoria |" in resumen
     archivo = guardar(evaluacion, tmp_path)
-    assert archivo.name == "evaluacion_mock_mock-v1_v1.md"
-    assert (tmp_path / "evaluacion_mock_mock-v1_v1.json").is_file()
+    assert archivo.name == "evaluacion_mock_mock-v1_full.md"
+    assert (tmp_path / "evaluacion_mock_mock-v1_full.json").is_file()
 
 
 @pytest.mark.skipif(os.getenv("EVALUAR_RIA01") != "1", reason="Definir EVALUAR_RIA01=1 para evaluar el proveedor real")
