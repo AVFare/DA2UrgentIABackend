@@ -2,7 +2,11 @@
 
 > **Fuente única de verdad** del proyecto UrgentIA (TP de Desarrollo de Aplicaciones II, UADE).
 > Todo el equipo (y sus asistentes de IA) trabaja a partir de este archivo.
-> Versión: 1.3 · Fecha: 06/10/2026 · Alcance: Defensa 1 (con la parte 2 ya contemplada).
+> Versión: 1.4 · Fecha: 06/10/2026 · Alcance: Defensa 1 (con la parte 2 ya contemplada).
+
+**Cambios de la versión 1.4**
+
+- notification-service pasa de Node 20 + NestJS a **Python 3.12 + FastAPI** (secciones 2, 3, 4, 4.1, 11.1 y 15). Los contratos no cambian. Su OpenAPI está en `/openapi.json` y el gateway lo pide ahí.
 
 **Cambios de la versión 1.3**
 
@@ -57,7 +61,7 @@ Si sos una IA ayudando a un integrante del equipo:
 |---|---|---|
 | ADR-01 | Microservicios desde la primera entrega, uno por bounded context | La consigna final pide SOA/microservicios; evita reescribir |
 | ADR-02 | Base de datos propia por servicio (nunca se leen tablas ajenas) | Evitar el "monolito distribuido" |
-| ADR-03 | Stack políglota: Java (gateway, tickets, usuarios), Python (IA), Node (notificaciones, reportes) | Python es el ecosistema de IA; demuestra independencia tecnológica. Máximo 3 lenguajes |
+| ADR-03 | Stack políglota: Java (gateway, tickets, usuarios), Python (IA, notificaciones), Node (reportes) | Python es el ecosistema de IA; demuestra independencia tecnológica. Máximo 3 lenguajes |
 | ADR-04 | PostgreSQL para tickets y usuarios; MongoDB para clasificaciones, notificaciones y reportes | Relacional donde hay invariantes y transacciones; documentos donde la forma es flexible o es un read model |
 | ADR-05 | API Gateway como única entrada; valida JWT | Seguridad y documentación centralizadas |
 | ADR-06 | En la Defensa 1, clasificación por REST sincrónico con timeout y fallback | Simplicidad; en la parte 2 pasa a cola de mensajes |
@@ -77,7 +81,7 @@ Si sos una IA ayudando a un integrante del equipo:
 | `ticket-service` | 8081 | Java 21, Spring Boot 3.5, Spring Data JPA | PostgreSQL `tickets_db` | P2 | **Core Domain**: tickets, prioridad, SLA, estados, escalamiento, publica eventos |
 | `classification-service` | 8082 | Python 3.12, FastAPI, Pydantic | MongoDB `classification_db` | P4 | Clasificación de texto con LLM (Model as a Service) |
 | `user-service` | 8083 | Java 21, Spring Boot 3.5, Spring Security | PostgreSQL `users_db` | P3 | Usuarios, roles, login y emisión de JWT |
-| `notification-service` | 8084 | Node 20, NestJS, TypeScript | MongoDB `notifications_db` | P5 | Consume eventos y registra/envía notificaciones (email simulado) |
+| `notification-service` | 8084 | Python 3.12, FastAPI, Pydantic | MongoDB `notifications_db` | P5 | Consume eventos y registra/envía notificaciones (email simulado) |
 | `reporting-service` | 8085 | Node 20, NestJS, TypeScript | MongoDB `reporting_db` | P6 | Lado de lectura (CQRS): proyecta eventos y expone reportes y SLA |
 
 Infraestructura en Compose: `postgres` (postgres:16, puerto 5432) y `mongo` (mongo:7, puerto 27017).
@@ -114,7 +118,7 @@ DA2UrgentIABackend/
 ├── ticket-service/               (Maven)
 ├── user-service/                 (Maven)
 ├── classification-service/       (pip)
-├── notification-service/         (npm)
+├── notification-service/         (pip)
 └── reporting-service/            (npm)
 ```
 
@@ -166,16 +170,19 @@ tests/            data/tickets_eval.json, test_*.py
 ```
 Las dependencias apuntan hacia adentro (`infrastructure → application → domain`): `application/ports/` define las interfaces y los adapters de `infrastructure` las implementan. Los adapters de LLM van uno por contrato de API (sección 12.1).
 
-**notification-service (NestJS)**
+**notification-service (Python, FastAPI, capas simples)**
 ```
-src/
-  main.ts, app.module.ts
-  eventos/          eventos.controller.ts (POST /api/eventos), eventos.service.ts, dto/
-  notificaciones/   notificaciones.controller.ts, notificaciones.service.ts,
-                    schemas/, reglas/, plantillas/,
-                    canales/ (canal-notificacion.interface.ts, email-simulado.canal.ts, interna.canal.ts)
-  common/           filtro de errores, middleware de correlationId
-  health/
+app/
+  main.py, config.py (Settings), db.py, logging_config.py
+  middleware/       correlation.py (X-Correlation-Id)
+  schemas/          camel_model.py, enums.py, evento.py (sobre), notificacion.py, pagination.py, error.py, health.py
+  endpoints/        eventos.py (POST /api/eventos), notificaciones.py, health.py
+  services/         evento_service.py (reglas + idempotencia), notificacion_service.py,
+                    plantillas.py (Factory), canales.py (Strategy)
+  repositories/     mongo_repository.py (base), notificacion_repository.py, evento_procesado_repository.py
+  providers/        email_provider.py (email simulado = log estructurado)
+  exceptions/       api_exception.py, handlers.py (formato común de error)
+tests/              pytest con mongomock
 ```
 
 **reporting-service (NestJS)**
@@ -715,7 +722,7 @@ flowchart TB
   C[Cliente: Swagger UI / Postman] -->|HTTPS + JWT| GW[api-gateway :8080]
   GW --> US[user-service :8083<br/>Java · PostgreSQL]
   GW --> TS[ticket-service :8081<br/>Java · PostgreSQL · CORE]
-  GW --> NS[notification-service :8084<br/>Node · MongoDB]
+  GW --> NS[notification-service :8084<br/>Python · MongoDB]
   GW --> RS[reporting-service :8085<br/>Node · MongoDB]
   TS -->|REST, timeout 7 s| CS[classification-service :8082<br/>Python · MongoDB]
   CS -->|HTTPS| LLM[(API de LLM externa)]
@@ -1071,7 +1078,7 @@ docker compose up -d --build --wait
 | ticket-service | Dominio (transiciones, matriz 9 casos, escalamiento, invariantes) sin Spring; integración de repositorio y del caso "IA caída" | JUnit 5, AssertJ, Testcontainers/H2, WireMock |
 | user-service | Login OK/incorrecto, JWT generado, email duplicado | JUnit 5, Spring Boot Test |
 | classification-service | Enmascarado, parser/validación, mock provider, set de evaluación | pytest |
-| notification-service | Reglas por evento, plantillas, idempotencia | Jest |
+| notification-service | Reglas por evento, plantillas, idempotencia | pytest + mongomock |
 | reporting-service | Proyectores, cálculo de SLA vencido y cumplimiento | Jest |
 | api-gateway | Rutas públicas, JWT inválido → 401, rol insuficiente → 403 | Spring Boot Test |
 
