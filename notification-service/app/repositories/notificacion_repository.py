@@ -1,3 +1,5 @@
+from typing import Any
+
 from pymongo import ASCENDING, DESCENDING
 
 from app.repositories.mongo_repository import MongoRepository
@@ -14,3 +16,13 @@ class NotificacionRepository(MongoRepository):
         self.collection.create_index([("destinatario", ASCENDING), ("fecha", DESCENDING)])
         # Segunda red contra duplicados, ademas de eventos_procesados.
         self.collection.create_index([("eventId", ASCENDING), ("destinatario", ASCENDING)], unique=True)
+
+    def buscar(
+        self, ticket_id: str | None, destinatario: str | None, page: int, size: int
+    ) -> tuple[list[dict[str, Any]], int]:
+        filtros: dict[str, Any] = {}
+        if ticket_id:
+            filtros["ticketId"] = ticket_id
+        if destinatario:
+            filtros["destinatario"] = destinatario
+        return self.find_paginated(filtros, page, size, [("fecha", DESCENDING), ("_id", DESCENDING)])

@@ -1,9 +1,11 @@
 import logging
+import math
 from datetime import UTC, datetime
 from typing import Any
 
 from pymongo.database import Database
 
+from app.exceptions.api_exception import ApiException
 from app.repositories.notificacion_repository import NotificacionRepository
 from app.services.canales import FALLIDA, obtener_canal
 from app.services.plantillas import PlantillaFactory
@@ -37,3 +39,21 @@ class NotificacionService:
             logger.exception("No se pudo enviar la notificacion", extra={"eventId": evento["eventId"], "canal": canal})
             notificacion["estado"] = FALLIDA
         return self.repository.insert(notificacion)
+
+    def listar(self, filtros: dict[str, Any]) -> dict[str, Any]:
+        """filtros: { page, size, ticketId?, destinatario? }. Devuelve la pagina del contrato."""
+        page, size = filtros["page"], filtros["size"]
+        contenido, total = self.repository.buscar(filtros.get("ticketId"), filtros.get("destinatario"), page, size)
+        return {
+            "content": contenido,
+            "page": page,
+            "size": size,
+            "totalElements": total,
+            "totalPages": math.ceil(total / size) if total else 0,
+        }
+
+    def obtener(self, id: str) -> dict[str, Any]:
+        notificacion = self.repository.find_by_id(id)
+        if notificacion is None:
+            raise ApiException(status=404, codigo="NO_ENCONTRADO", mensaje=f"No existe la notificación {id}")
+        return notificacion
