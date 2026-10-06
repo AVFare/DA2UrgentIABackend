@@ -148,8 +148,8 @@ app/
   domain/         enums.py, models.py (Clasificacion y sus invariantes)
   application/    ports/ (llm_provider.py, clasificacion_repository.py), clasificacion_facade.py, masking.py
   infrastructure/
-    api/          routes.py, schemas.py (Pydantic de request/response), errors.py, health.py,
-                  correlation.py, openapi.py
+    api/          routes/ (clasificaciones.py, health.py), schemas/ (DTOs Pydantic por tema:
+                  clasificacion.py, error.py, health.py, base.py), errors.py, correlation.py, openapi.py
     llm/          mock_provider.py, openai_compatible_provider.py,
                   factory.py (LlmProviderFactory), response_parser.py (ACL)
     persistence/  clasificacion_repository.py (MongoDB)
