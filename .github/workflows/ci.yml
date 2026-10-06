@@ -50,15 +50,19 @@ jobs:
         run: docker build -t "urgentia-${{ matrix.servicio }}" "${{ matrix.servicio }}"
 
   python:
-    name: Python · classification-service
+    name: Python · ${{ matrix.servicio }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        servicio: [classification-service, notification-service]
     steps:
       - uses: actions/checkout@v5
 
       - name: Ver si el servicio ya tiene proyecto
         id: proyecto
         run: |
-          if [ -f "classification-service/requirements.txt" ]; then
+          if [ -f "${{ matrix.servicio }}/requirements.txt" ]; then
             echo "existe=true" >> "$GITHUB_OUTPUT"
           else
             echo "existe=false" >> "$GITHUB_OUTPUT"
@@ -72,14 +76,14 @@ jobs:
 
       - name: Instalar dependencias y correr tests
         if: steps.proyecto.outputs.existe == 'true'
-        working-directory: classification-service
+        working-directory: ${{ matrix.servicio }}
         run: |
-          pip install -r requirements.txt pytest
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; else pip install -r requirements.txt pytest; fi
           pytest
 
       - name: Construir la imagen Docker
-        if: steps.proyecto.outputs.existe == 'true' && hashFiles('classification-service/Dockerfile') != ''
-        run: docker build -t urgentia-classification-service classification-service
+        if: steps.proyecto.outputs.existe == 'true' && hashFiles(format('{0}/Dockerfile', matrix.servicio)) != ''
+        run: docker build -t "urgentia-${{ matrix.servicio }}" "${{ matrix.servicio }}"
 
   node:
     name: Node · ${{ matrix.servicio }}
@@ -87,7 +91,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        servicio: [notification-service, reporting-service]
+        servicio: [reporting-service]
     steps:
       - uses: actions/checkout@v5
 
