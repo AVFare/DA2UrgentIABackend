@@ -162,3 +162,16 @@ tests/              fakes.py (dobles de los puertos), test_*.py, data/tickets_ev
 
 Las dependencias apuntan hacia adentro: `infrastructure → application → domain`.
 `application/ports/` define las interfaces que implementan los adapters de `infrastructure`.
+
+## Patrones aplicados
+
+| Patrón | Dónde | Qué problema resuelve |
+|---|---|---|
+| **Facade** | `ClasificacionFacade` (`application/clasificacion_facade.py`) | Clasificar implica enmascarar, armar el prompt, consultar al LLM con timeout, reintentar, validar y guardar. El endpoint llama a un solo método, `clasificar(ticket_id, titulo, descripcion)`, sin conocer esas piezas. |
+| **Strategy** | Puerto `LlmProvider` (`application/ports/llm_provider.py`), con `MockLlmProvider` y `OpenAICompatibleProvider` (`infrastructure/llm/`) | Cambiar de LLM (mock, Ollama local, Groq) sin tocar el caso de uso: la facade solo conoce la interfaz. Hay una estrategia por contrato de API, así que un proveedor compatible con OpenAI se suma con configuración. |
+| **Factory Method** | `LlmProviderFactory`: función `crear_llm_provider` (`infrastructure/llm/factory.py`) | Elegir y construir la estrategia según `LLM_PROVIDER`, con la URL, el modelo y el precalentamiento que corresponden a cada proveedor, y fallar al arrancar si falta la API key. |
+| **Adapter** | `OpenAICompatibleProvider` (`infrastructure/llm/openai_compatible_provider.py`) | Traducir el puerto `LlmProvider` a la API HTTP `/chat/completions`, y sus errores (conexión, HTTP, formato) a los errores de la aplicación. |
+| **Anti-Corruption Layer** | `parsear_clasificacion` (`infrastructure/llm/response_parser.py`) | El LLM devuelve texto libre que puede no cumplir el formato. El parser extrae el JSON y lo convierte en la `Clasificacion` del dominio; si no valida, la respuesta se rechaza y nunca llega al modelo de dominio. |
+| **Repository** | Puerto `ClasificacionRepository` (`application/ports/clasificacion_repository.py`) y `MongoClasificacionRepository` (`infrastructure/persistence/`) | La aplicación guarda y lista clasificaciones sin depender de MongoDB; en los tests se usa un repositorio en memoria. |
+| **Value Object** | `Clasificacion` (`domain/models.py`) | Inmutable y con sus invariantes validadas al construirse (enums cerrados, confianza entre 0 y 1, justificación de hasta 300 caracteres): no puede existir una clasificación inválida. |
+| **Ports and Adapters** (hexagonal) | `application/ports/` y `infrastructure/` | El dominio y los casos de uso no dependen de FastAPI, MongoDB ni del proveedor de LLM; las dependencias se arman en `main.py`. |
