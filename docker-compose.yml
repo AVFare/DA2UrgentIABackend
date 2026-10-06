@@ -100,6 +100,21 @@ services:
       retries: 20
     networks: [urgentia-net]
 
+  notification-service:
+    build: ./notification-service
+    environment:
+      MONGO_URI: mongodb://notifications_user:${NOTIFICATIONS_DB_PASSWORD}@mongo:27017/notifications_db
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      # La imagen python:3.12-slim no trae curl.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8084/health', timeout=2)"]
+      interval: 5s
+      retries: 20
+    networks: [urgentia-net]
+
 volumes:
   pgdata:
   mongodata:
