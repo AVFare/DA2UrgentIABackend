@@ -5,7 +5,7 @@ Arranque: python -m app.main (puerto 8082). Swagger propio en /docs y OpenAPI en
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def _ciclo_de_vida(app: FastAPI) -> AsyncIterator[None]:
+async def _ciclo_de_vida(app: FastAPI) -> AsyncGenerator[None]:
     """Arma las dependencias al arrancar y las cierra al apagar. Si la facade ya viene armada, la usa."""
     if app.state.facade is not None:
         yield
