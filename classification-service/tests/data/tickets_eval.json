@@ -1,0 +1,122 @@
+[
+  {
+    "id": 1,
+    "titulo": "Producción caída",
+    "descripcion": "Desde las 9 nadie puede ingresar al sistema, todos los usuarios quedan bloqueados en el login",
+    "esperado": {"categoria": "INCIDENTE", "urgencia": "ALTA", "impacto": "ALTO", "moduloAfectado": "AUTENTICACION", "requiereEscalamiento": true, "prioridad": "P1"}
+  },
+  {
+    "id": 2,
+    "titulo": "No puedo pagar con tarjeta",
+    "descripcion": "Al confirmar el pago con mi tarjeta me da error 500; a otros compañeros del área también",
+    "esperado": {"categoria": "INCIDENTE", "urgencia": "ALTA", "impacto": "MEDIO", "moduloAfectado": "PAGOS", "requiereEscalamiento": false, "prioridad": "P2"}
+  },
+  {
+    "id": 3,
+    "titulo": "Factura con monto incorrecto",
+    "descripcion": "La factura de septiembre del cliente 4411 salió con IVA duplicado",
+    "esperado": {"categoria": "BUG", "urgencia": "MEDIA", "impacto": "BAJO", "moduloAfectado": "FACTURACION", "requiereEscalamiento": false, "prioridad": "P4"}
+  },
+  {
+    "id": 4,
+    "titulo": "Olvidé mi contraseña",
+    "descripcion": "No me llega el mail de recuperación de contraseña",
+    "esperado": {"categoria": "INCIDENTE", "urgencia": "MEDIA", "impacto": "BAJO", "moduloAfectado": "AUTENTICACION", "requiereEscalamiento": false, "prioridad": "P4"}
+  },
+  {
+    "id": 5,
+    "titulo": "Consulta sobre reportes",
+    "descripcion": "¿Cómo exporto el reporte mensual de ventas a Excel?",
+    "esperado": {"categoria": "CONSULTA", "urgencia": "BAJA", "impacto": "BAJO", "moduloAfectado": "REPORTES", "requiereEscalamiento": false, "prioridad": "P4"}
+  },
+  {
+    "id": 6,
+    "titulo": "Alta de usuario nuevo",
+    "descripcion": "Necesito que den de alta a un empleado nuevo en el sistema con rol de ventas",
+    "esperado": {"categoria": "SOLICITUD", "urgencia": "BAJA", "impacto": "BAJO", "moduloAfectado": "AUTENTICACION", "requiereEscalamiento": false, "prioridad": "P4"}
+  },
+  {
+    "id": 7,
+    "titulo": "Sistema muy lento",
+    "descripcion": "Todas las consultas a la base de datos tardan más de 30 segundos desde esta mañana, afecta a toda la empresa",
+    "esperado": {"categoria": "INCIDENTE", "urgencia": "ALTA", "impacto": "ALTO", "moduloAfectado": "BASE_DE_DATOS", "requiereEscalamiento": true, "prioridad": "P1"}
+  },
+  {
+    "id": 8,
+    "titulo": "Integración con el banco",
+    "descripcion": "La sincronización nocturna con el banco no corrió anoche; hoy hay que conciliar a mano",
+    "esperado": {"categoria": "INCIDENTE", "urgencia": "MEDIA", "impacto": "MEDIO", "moduloAfectado": "INTEGRACIONES", "requiereEscalamiento": false, "prioridad": "P3"}
+  },
+  {
+    "id": 9,
+    "titulo": "Botón de reporte no anda",
+    "descripcion": "El botón \"Descargar PDF\" del reporte de stock no hace nada en Firefox",
+    "esperado": {"categoria": "BUG", "urgencia": "BAJA", "impacto": "BAJO", "moduloAfectado": "REPORTES", "requiereEscalamiento": false, "prioridad": "P4"}
+  },
+  {
+    "id": 10,
+    "titulo": "Servidor sin espacio",
+    "descripcion": "El servidor de archivos está al 98% de disco y se va a llenar hoy",
+    "esperado": {"categoria": "INCIDENTE", "urgencia": "ALTA", "impacto": "MEDIO", "moduloAfectado": "INFRAESTRUCTURA", "requiereEscalamiento": false, "prioridad": "P2"}
+  },
+  {
+    "id": 11,
+    "titulo": "Posible acceso indebido",
+    "descripcion": "Varios usuarios reportan que alguien les cambió la contraseña sin pedirlo y hay inicios de sesión desde otro país",
+    "esperado": {"categoria": "INCIDENTE", "urgencia": "ALTA", "impacto": "ALTO", "moduloAfectado": "AUTENTICACION", "requiereEscalamiento": true, "prioridad": "P1"}
+  },
+  {
+    "id": 12,
+    "titulo": "Desaparecieron las facturas",
+    "descripcion": "Después de la actualización de anoche se borraron todas las facturas de octubre; perdimos los datos",
+    "esperado": {"categoria": "INCIDENTE", "urgencia": "ALTA", "impacto": "ALTO", "moduloAfectado": "FACTURACION", "requiereEscalamiento": true, "prioridad": "P1"}
+  },
+  {
+    "id": 13,
+    "titulo": "Acceso a reportes de ventas",
+    "descripcion": "Solicito permiso para ver los reportes de ventas con mi usuario",
+    "esperado": {"categoria": "SOLICITUD", "urgencia": "BAJA", "impacto": "BAJO", "moduloAfectado": "REPORTES", "requiereEscalamiento": false, "prioridad": "P4"}
+  },
+  {
+    "id": 14,
+    "titulo": "Cambiar mi contraseña",
+    "descripcion": "¿Dónde puedo cambiar mi contraseña desde mi perfil?",
+    "esperado": {"categoria": "CONSULTA", "urgencia": "BAJA", "impacto": "BAJO", "moduloAfectado": "AUTENTICACION", "requiereEscalamiento": false, "prioridad": "P4"}
+  },
+  {
+    "id": 15,
+    "titulo": "Rechazan todos los pagos",
+    "descripcion": "Desde las 14 ningún cliente puede pagar con tarjeta en producción, todos los pagos salen rechazados",
+    "esperado": {"categoria": "INCIDENTE", "urgencia": "ALTA", "impacto": "ALTO", "moduloAfectado": "PAGOS", "requiereEscalamiento": true, "prioridad": "P1"}
+  },
+  {
+    "id": 16,
+    "titulo": "Fecha mal en el PDF",
+    "descripcion": "En el reporte de stock exportado a PDF la fecha del encabezado aparece en formato inglés",
+    "esperado": {"categoria": "BUG", "urgencia": "BAJA", "impacto": "BAJO", "moduloAfectado": "REPORTES", "requiereEscalamiento": false, "prioridad": "P4"}
+  },
+  {
+    "id": 17,
+    "titulo": "Servidor de pruebas",
+    "descripcion": "Necesitamos un servidor de pruebas para el equipo de desarrollo para el mes que viene",
+    "esperado": {"categoria": "SOLICITUD", "urgencia": "BAJA", "impacto": "MEDIO", "moduloAfectado": "INFRAESTRUCTURA", "requiereEscalamiento": false, "prioridad": "P4"}
+  },
+  {
+    "id": 18,
+    "titulo": "Descuentos mal calculados",
+    "descripcion": "El total de las facturas no descuenta la bonificación por volumen; pasa con todas las facturas del área comercial",
+    "esperado": {"categoria": "BUG", "urgencia": "MEDIA", "impacto": "MEDIO", "moduloAfectado": "FACTURACION", "requiereEscalamiento": false, "prioridad": "P3"}
+  },
+  {
+    "id": 19,
+    "titulo": "Frecuencia de sincronización",
+    "descripcion": "¿Cada cuánto se sincronizan los movimientos del banco con el sistema?",
+    "esperado": {"categoria": "CONSULTA", "urgencia": "BAJA", "impacto": "BAJO", "moduloAfectado": "INTEGRACIONES", "requiereEscalamiento": false, "prioridad": "P4"}
+  },
+  {
+    "id": 20,
+    "titulo": "Sucursal sin red",
+    "descripcion": "La sucursal Rosario no tiene conexión a la red desde hace una hora y el equipo de ventas de esa oficina no puede trabajar",
+    "esperado": {"categoria": "INCIDENTE", "urgencia": "ALTA", "impacto": "MEDIO", "moduloAfectado": "INFRAESTRUCTURA", "requiereEscalamiento": false, "prioridad": "P2"}
+  }
+]
