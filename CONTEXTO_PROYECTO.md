@@ -2,7 +2,13 @@
 
 > **Fuente única de verdad** del proyecto UrgentIA (TP de Desarrollo de Aplicaciones II, UADE).
 > Todo el equipo (y sus asistentes de IA) trabaja a partir de este archivo.
-> Versión: 1.2 · Fecha: 05/10/2026 · Alcance: Defensa 1 (con la parte 2 ya contemplada).
+> Versión: 1.3 · Fecha: 06/10/2026 · Alcance: Defensa 1 (con la parte 2 ya contemplada).
+
+**Cambios de la versión 1.3**
+
+- classification-service: el prompt por defecto pasa a ser `v2` (`PROMPT_VERSION=v2`), que precisa cuándo el impacto es ALTO y cuándo no se escala; `v1` queda para modelos locales chicos (sección 12.2).
+- Set de evaluación completo (20 casos) y resultados de RIA01 por proveedor y modelo (sección 12.3).
+- Groq: modelo por defecto `qwen/qwen3.8-27b` (sección 12.1).
 
 **Cambios de la versión 1.2**
 
@@ -154,7 +160,7 @@ app/
                   factory.py (LlmProviderFactory), response_parser.py (ACL)
     persistence/  clasificacion_repository.py (MongoDB)
     logs.py       logs JSON con correlationId
-prompts/          clasificacion_v1.txt
+prompts/          clasificacion_v1.txt, clasificacion_v2.txt
 scripts/          exportar_openapi.py (genera contracts/classification-service.yaml)
 tests/            data/tickets_eval.json, test_*.py
 ```
@@ -537,7 +543,7 @@ Si está `PENDIENTE_CLASIFICACION`: `clasificacion`, `prioridad`, `fechaLimiteSl
    - emails → `[EMAIL]`
    - teléfonos (secuencias de 8+ dígitos con espacios, guiones o `+`) → `[TELEFONO]`
    - DNI (7–8 dígitos, con o sin puntos) → `[DNI]`
-3. Armar el prompt desde `prompts/clasificacion_v{PROMPT_VERSION}.txt`.
+3. Armar el prompt desde `prompts/clasificacion_{PROMPT_VERSION}.txt`.
 4. Llamar a `LlmProvider` (elegido por `LlmProviderFactory` según `LLM_PROVIDER`) con timeout `LLM_TIMEOUT_MS` (5000).
 5. Parsear y validar (ACL, `response_parser.py`): JSON válido, enums dentro de las listas, `confianza` entre 0 y 1, `justificacion` ≤ 300 caracteres.
 6. Si la validación falla y quedan ≥ 2 s del presupuesto total (6 s), reintentar una vez; si no, 502.
@@ -776,7 +782,7 @@ sequenceDiagram
 | `groq` | `OpenAICompatibleProvider` | `https://api.groq.com/openai/v1` | Sí | API en internet con free tier. Cada integrante saca su key gratis en console.groq.com y la pone solo en su `.env` |
 
 - Ollama y Groq hablan el contrato de la API de OpenAI (`/chat/completions`), así que comparten adapter (Strategy por contrato). Sumar otro proveedor compatible es solo configuración: `LLM_BASE_URL` y `LLM_MODEL`.
-- `LLM_MODEL` elige el modelo de cada proveedor (por ejemplo, `qwen2.5:3b` en Ollama o `llama-3.3-70b-versatile` en Groq). `LLM_BASE_URL` pisa la URL por defecto.
+- `LLM_MODEL` elige el modelo de cada proveedor (por ejemplo, `qwen2.5:3b` en Ollama o `qwen/qwen3.8-27b` en Groq). `LLM_BASE_URL` pisa la URL por defecto.
 - Privacidad: el texto se enmascara antes de salir del servicio (sección 9.3), sea cual sea el proveedor.
 
 **Reglas del `MockLlmProvider`** (texto en minúsculas y sin tildes; se evalúan en orden):
@@ -793,7 +799,16 @@ sequenceDiagram
 Módulo por palabra clave: "login", "contrasena", "ingresar", "usuario" → AUTENTICACION · "factura" → FACTURACION · "pago", "tarjeta" → PAGOS · "reporte", "excel", "pdf" → REPORTES · "servidor", "disco", "red" → INFRAESTRUCTURA · "base de datos", "consultas" → BASE_DE_DATOS · "banco", "sincronizacion", "integracion" → INTEGRACIONES · otro → OTRO.
 `confianza` = 0.7, `proveedor` = `"mock"`, `modelo` = `"mock-v1"`. La justificación dice qué regla aplicó.
 
-### 12.2 Prompt v1 (`prompts/clasificacion_v1.txt`)
+### 12.2 Prompts (`prompts/clasificacion_{PROMPT_VERSION}.txt`)
+
+| Versión | Uso |
+|---|---|
+| `v2` | **Default.** Mejor resultado con el proveedor real (sección 12.3) |
+| `v1` | Para modelos locales chicos (por ejemplo, `qwen2.5:1.5b` en CPU): prompt más corto, responde más rápido |
+
+`v2` parte de `v1` y cambia tres cosas: el impacto ALTO es solo si afecta a toda la empresa, a todos los usuarios o a todos los clientes; dice explícitamente qué no se escala (un área, una sucursal, un grupo de usuarios o un riesgo a futuro); y suma un ejemplo de incidente de un área que no se escala.
+
+Prompt `v2` (`prompts/clasificacion_v2.txt`):
 
 ```text
 Sos un analista de mesa de ayuda de una empresa de software. Tu tarea es clasificar
@@ -816,15 +831,22 @@ Criterios:
 - INCIDENTE: algo que funcionaba dejó de funcionar. BUG: comportamiento incorrecto puntual.
   SOLICITUD: pedido de algo nuevo (alta, permiso, cambio). CONSULTA: pregunta de uso.
 - Urgencia ALTA: impide trabajar ahora. MEDIA: molesta pero hay alternativa. BAJA: puede esperar.
-- Impacto ALTO: producción caída, toda la empresa o todos los usuarios. MEDIO: un área o varios
-  usuarios. BAJO: un solo usuario.
-- requiereEscalamiento = true SOLO si hay caída de producción, todos o muchos usuarios bloqueados,
-  pérdida de datos o riesgo de seguridad.
+- Impacto ALTO: SOLO si afecta a toda la empresa, a todos los usuarios o a todos los clientes
+  (por ejemplo, producción caída). MEDIO: un área, una sucursal, un equipo o varios usuarios,
+  aunque no puedan trabajar. BAJO: un solo usuario o un caso puntual.
+- requiereEscalamiento = true SOLO si ocurre ahora alguna de estas situaciones: producción caída
+  o todos los usuarios o clientes bloqueados, pérdida de datos, o riesgo de seguridad (accesos
+  indebidos, cuentas comprometidas).
+- requiereEscalamiento = false si el problema afecta a un área, una sucursal o un grupo de
+  usuarios, o si es un riesgo a futuro que todavía no ocurrió.
 - Los datos marcados como [EMAIL], [TELEFONO] o [DNI] fueron ocultados a propósito; ignoralos.
 
 Ejemplos:
 Ticket: "Producción caída" - "Nadie puede entrar al sistema desde las 9"
 {"categoria":"INCIDENTE","urgencia":"ALTA","impacto":"ALTO","moduloAfectado":"AUTENTICACION","requiereEscalamiento":true,"confianza":0.95,"justificacion":"Caída total del acceso que afecta a todos los usuarios"}
+
+Ticket: "Correo caído en compras" - "El equipo de compras no recibe mails desde hace una hora y no puede trabajar"
+{"categoria":"INCIDENTE","urgencia":"ALTA","impacto":"MEDIO","moduloAfectado":"INFRAESTRUCTURA","requiereEscalamiento":false,"confianza":0.85,"justificacion":"Falla que impide trabajar a un área; no afecta a toda la empresa"}
 
 Ticket: "Exportar a Excel" - "¿Cómo exporto el reporte mensual a Excel?"
 {"categoria":"CONSULTA","urgencia":"BAJA","impacto":"BAJO","moduloAfectado":"REPORTES","requiereEscalamiento":false,"confianza":0.9,"justificacion":"Pregunta de uso sobre exportación de reportes"}
@@ -840,7 +862,7 @@ Título: {titulo}
 Descripción: {descripcion}
 ```
 
-### 12.3 Set de evaluación base (`tests/data/tickets_eval.json`, completar hasta 20)
+### 12.3 Set de evaluación (`tests/data/tickets_eval.json`, 20 casos)
 
 | # | Título | Descripción | categoria | urgencia | impacto | módulo | escalar | Prioridad esperada |
 |---|---|---|---|---|---|---|---|---|
@@ -854,8 +876,31 @@ Descripción: {descripcion}
 | 8 | Integración con el banco | La sincronización nocturna con el banco no corrió anoche; hoy hay que conciliar a mano | INCIDENTE | MEDIA | MEDIO | INTEGRACIONES | no | P3 |
 | 9 | Botón de reporte no anda | El botón "Descargar PDF" del reporte de stock no hace nada en Firefox | BUG | BAJA | BAJO | REPORTES | no | P4 |
 | 10 | Servidor sin espacio | El servidor de archivos está al 98% de disco y se va a llenar hoy | INCIDENTE | ALTA | MEDIO | INFRAESTRUCTURA | no | P2 |
+| 11 | Posible acceso indebido | Varios usuarios reportan que alguien les cambió la contraseña sin pedirlo y hay inicios de sesión desde otro país | INCIDENTE | ALTA | ALTO | AUTENTICACION | sí | P1 |
+| 12 | Desaparecieron las facturas | Después de la actualización de anoche se borraron todas las facturas de octubre; perdimos los datos | INCIDENTE | ALTA | ALTO | FACTURACION | sí | P1 |
+| 13 | Acceso a reportes de ventas | Solicito permiso para ver los reportes de ventas con mi usuario | SOLICITUD | BAJA | BAJO | REPORTES | no | P4 |
+| 14 | Cambiar mi contraseña | ¿Dónde puedo cambiar mi contraseña desde mi perfil? | CONSULTA | BAJA | BAJO | AUTENTICACION | no | P4 |
+| 15 | Rechazan todos los pagos | Desde las 14 ningún cliente puede pagar con tarjeta en producción, todos los pagos salen rechazados | INCIDENTE | ALTA | ALTO | PAGOS | sí | P1 |
+| 16 | Fecha mal en el PDF | En el reporte de stock exportado a PDF la fecha del encabezado aparece en formato inglés | BUG | BAJA | BAJO | REPORTES | no | P4 |
+| 17 | Servidor de pruebas | Necesitamos un servidor de pruebas para el equipo de desarrollo para el mes que viene | SOLICITUD | BAJA | MEDIO | INFRAESTRUCTURA | no | P4 |
+| 18 | Descuentos mal calculados | El total de las facturas no descuenta la bonificación por volumen; pasa con todas las facturas del área comercial | BUG | MEDIA | MEDIO | FACTURACION | no | P3 |
+| 19 | Frecuencia de sincronización | ¿Cada cuánto se sincronizan los movimientos del banco con el sistema? | CONSULTA | BAJA | BAJO | INTEGRACIONES | no | P4 |
+| 20 | Sucursal sin red | La sucursal Rosario no tiene conexión a la red desde hace una hora y el equipo de ventas de esa oficina no puede trabajar | INCIDENTE | ALTA | MEDIO | INFRAESTRUCTURA | no | P2 |
 
 **Criterio de aceptación (RIA01):** ≥ 80% de acierto en `categoria` y ≥ 90% en `requiereEscalamiento` sobre los 20 casos, con el proveedor real.
+
+**Resultados** (`python -m scripts.evaluar`; detalle en `classification-service/tests/data/resultados/`):
+
+| Proveedor / modelo | Prompt | categoria | requiereEscalamiento | prioridad | Latencia mediana | RIA01 |
+|---|---|---|---|---|---|---|
+| Ollama `qwen2.5:1.5b` (local, CPU) | v1 | 80% | 80% | 75% | 3,7 s | no |
+| Ollama `qwen2.5:1.5b` (local, CPU) | v2 | 80% | 85% | 75% | 4,7 s | no |
+| Groq `openai/gpt-oss-20b` | v1 | 100% | 80% | 70% | 0,7 s | no |
+| Groq `openai/gpt-oss-120b` | v1 | 100% | 85% | 80% | 1,2 s | no |
+| Groq `qwen/qwen3.8-27b` | v1 | 100% | 95% | 85% | 0,6 s | sí |
+| **Groq `qwen/qwen3.8-27b`** | **v2** | **100%** | **100%** | **95%** | **0,6 s** | **sí** |
+
+Los errores de escalamiento de los modelos chicos son todos de más (escalan casos de un área); ningún modelo dejó sin escalar un caso crítico.
 **Caso de privacidad (test de `masking.py`):** "Soy Juan, mi mail es juan.perez@empresa.com y mi celular 11-5555-1234, DNI 30.123.456" → no debe quedar ningún dato original en el texto enviado ni en Mongo.
 
 ---
@@ -901,7 +946,7 @@ LLM_API_KEY=
 LLM_MODEL=
 LLM_BASE_URL=
 LLM_TIMEOUT_MS=5000
-PROMPT_VERSION=v1
+PROMPT_VERSION=v2
 
 # Integración
 CLASSIFICATION_TIMEOUT_MS=7000
