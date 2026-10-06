@@ -27,6 +27,18 @@ python -m app.main
 
 Por defecto usa `LLM_PROVIDER=mock`, que no necesita internet ni API key.
 
+## Cómo correrlo con Docker
+
+Desde la raíz del repo, con el `.env` creado a partir de `.env.example`:
+
+```bash
+docker compose up -d --build --wait classification-service
+docker compose logs classification-service
+```
+
+Levanta también MongoDB, del que depende. Dentro de la red del Compose el servicio responde en
+`http://classification-service:8082`; desde afuera se accede a través del api-gateway.
+
 ## Contrato
 
 El contrato se genera desde el código. Si cambia la API, se vuelve a exportar y se commitea

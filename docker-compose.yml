@@ -76,6 +76,30 @@ services:
       retries: 20
     networks: [urgentia-net]
 
+  classification-service:
+    build: ./classification-service
+    environment:
+      MONGO_URI: mongodb://classification_user:${CLASSIFICATION_DB_PASSWORD}@mongo:27017/classification_db
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-5000}
+      PROMPT_VERSION: ${PROMPT_VERSION:-v1}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    # Para LLM_PROVIDER=ollama: llega al Ollama instalado en la maquina (en Linux no existe por defecto).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      # La imagen python:3.12-slim no trae curl.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8082/health', timeout=2)"]
+      interval: 5s
+      retries: 20
+    networks: [urgentia-net]
+
 volumes:
   pgdata:
   mongodata:
