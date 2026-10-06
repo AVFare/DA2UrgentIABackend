@@ -25,7 +25,7 @@ def mongo(monkeypatch):
 
 
 @pytest.fixture
-def client():
+def client(mongo):
     with TestClient(create_app(), raise_server_exceptions=False) as c:
         yield c
 
