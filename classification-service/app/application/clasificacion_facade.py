@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 
 PRESUPUESTO_S = 6.0
 MARGEN_REINTENTO_S = 2.0
+TICKET_DE_PRUEBA = ("Prueba de arranque", "Ticket de prueba para preparar el modelo")
 
 _MARCADORES = re.compile(r"\{(titulo|descripcion)\}")
 
@@ -81,6 +82,10 @@ class ClasificacionFacade:
 
     async def listar(self, ticket_id: UUID | None, page: int, size: int) -> Pagina[RegistroClasificacion]:
         return await self._repositorio.listar(ticket_id, page, size)
+
+    async def precalentar(self) -> None:
+        """Prepara el LLM con el prompt real, para que la primera clasificacion no tarde de mas."""
+        await self._llm.precalentar(armar_prompt(self._plantilla, *TICKET_DE_PRUEBA))
 
     async def _consultar(self, pedido: PedidoLlm, inicio: float) -> RespuestaLlm:
         """Una consulta, y un reintento si la respuesta no es valida y quedan MARGEN_REINTENTO_S."""

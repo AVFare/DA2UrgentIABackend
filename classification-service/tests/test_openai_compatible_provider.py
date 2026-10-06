@@ -20,9 +20,15 @@ def respuesta_chat(contenido: str = CONTENIDO, modelo: str = "qwen2.5:1.5b") -> 
     return {"model": modelo, "choices": [{"message": {"role": "assistant", "content": contenido}}]}
 
 
-def crear_provider(manejador, api_key: str = "") -> OpenAICompatibleProvider:
-    cliente = httpx2.AsyncClient(transport=httpx2.MockTransport(manejador))
-    return OpenAICompatibleProvider("ollama", "http://llm:11434/v1/", "qwen2.5:1.5b", api_key, cliente)
+def crear_provider(manejador, api_key: str = "", precalentar_al_iniciar: bool = True) -> OpenAICompatibleProvider:
+    return OpenAICompatibleProvider(
+        nombre="ollama",
+        base_url="http://llm:11434/v1/",
+        modelo="qwen2.5:1.5b",
+        api_key=api_key,
+        precalentar_al_iniciar=precalentar_al_iniciar,
+        cliente=httpx2.AsyncClient(transport=httpx2.MockTransport(manejador)),
+    )
 
 
 def consultar(provider: OpenAICompatibleProvider):
@@ -115,3 +121,15 @@ def test_precalentar_manda_el_prompt_con_un_solo_token_de_respuesta():
 
     assert recibidos[0]["messages"] == [{"role": "user", "content": "prompt completo"}]
     assert recibidos[0]["max_tokens"] == 1
+
+
+def test_sin_precalentamiento_habilitado_no_hace_ningun_pedido():
+    recibidos = []
+
+    def manejador(request):
+        recibidos.append(request)
+        return httpx2.Response(200, json=respuesta_chat())
+
+    asyncio.run(crear_provider(manejador, precalentar_al_iniciar=False).precalentar("prompt"))
+
+    assert recibidos == []

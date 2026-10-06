@@ -24,6 +24,7 @@ def test_ollama_usa_la_url_y_el_modelo_por_defecto():
     assert provider.nombre == "ollama"
     assert provider.modelo == "qwen2.5:1.5b"
     assert provider._url == "http://host.docker.internal:11434/v1/chat/completions"
+    assert provider._precalentar_al_iniciar is True
 
 
 def test_las_variables_pisan_la_url_y_el_modelo():
@@ -44,6 +45,7 @@ def test_groq_con_api_key():
 
     assert provider._url == "https://api.groq.com/openai/v1/chat/completions"
     assert provider._headers == {"Authorization": "Bearer clave"}
+    assert provider._precalentar_al_iniciar is False
 
 
 def test_carga_el_prompt_v1_con_sus_marcadores():

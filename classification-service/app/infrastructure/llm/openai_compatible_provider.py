@@ -24,10 +24,12 @@ class OpenAICompatibleProvider:
         base_url: str,
         modelo: str,
         api_key: str = "",
+        precalentar_al_iniciar: bool = False,
         cliente: httpx2.AsyncClient | None = None,
     ) -> None:
         self.nombre = nombre
         self.modelo = modelo
+        self._precalentar_al_iniciar = precalentar_al_iniciar
         self._url = base_url.rstrip("/") + "/chat/completions"
         self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._cliente = cliente or httpx2.AsyncClient(timeout=_TIMEOUT_HTTP_S)
@@ -53,9 +55,11 @@ class OpenAICompatibleProvider:
         )
 
     async def precalentar(self, prompt: str) -> None:
-        """Consulta con el prompt y un solo token de respuesta, para que el modelo quede cargado y la
-        parte fija del prompt quede procesada en la cache del servidor (util con Ollama).
+        """Si esta habilitado, consulta con el prompt y un solo token de respuesta, para que el modelo
+        quede cargado y la parte fija del prompt quede procesada en la cache del servidor.
         """
+        if not self._precalentar_al_iniciar:
+            return
         cuerpo = {"model": self.modelo, "messages": [{"role": "user", "content": prompt}], "max_tokens": 1}
         try:
             await self._post(cuerpo)

@@ -26,6 +26,7 @@ class LlmProvider(Protocol):
     """Strategy: hay un adapter por contrato de API (mock, compatible con OpenAI, ...)."""
 
     nombre: str
+    modelo: str
 
     async def consultar(self, pedido: PedidoLlm) -> RespuestaLlm:
         """Clasifica el pedido. El timeout lo controla quien llama.
@@ -33,4 +34,12 @@ class LlmProvider(Protocol):
         Lanza LlmRespuestaInvalidaError si la respuesta no es una clasificacion valida y
         LlmNoDisponibleError si no se pudo consultar al LLM.
         """
+        ...
+
+    async def precalentar(self, prompt: str) -> None:
+        """Prepara el LLM para que la primera consulta no tarde de mas. Nunca lanza errores."""
+        ...
+
+    async def cerrar(self) -> None:
+        """Libera las conexiones del adapter."""
         ...

@@ -51,6 +51,7 @@ class LlmFalso:
     """
 
     nombre = "falso"
+    modelo = "modelo-falso"
 
     def __init__(self, *respuestas: Clasificacion | LlmError, reloj: RelojFalso | None = None,
                  segundos_por_consulta: float = 0.0, demora_real_s: float = 0.0) -> None:
@@ -59,6 +60,14 @@ class LlmFalso:
         self._segundos = segundos_por_consulta
         self._demora_real_s = demora_real_s
         self.pedidos: list[PedidoLlm] = []
+        self.prompts_de_precalentamiento: list[str] = []
+        self.cerrado = False
+
+    async def precalentar(self, prompt: str) -> None:
+        self.prompts_de_precalentamiento.append(prompt)
+
+    async def cerrar(self) -> None:
+        self.cerrado = True
 
     async def consultar(self, pedido: PedidoLlm) -> RespuestaLlm:
         self.pedidos.append(pedido)

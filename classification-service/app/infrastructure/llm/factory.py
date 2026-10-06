@@ -17,11 +17,15 @@ class _ProveedorOpenAI:
     base_url: str
     modelo: str
     requiere_api_key: bool
+    # Un modelo local en CPU tarda varios segundos en cargarse y en procesar la parte fija del prompt.
+    precalentar_al_iniciar: bool
 
 
 _PROVEEDORES_OPENAI = {
-    "ollama": _ProveedorOpenAI("http://host.docker.internal:11434/v1", "qwen2.5:1.5b", requiere_api_key=False),
-    "groq": _ProveedorOpenAI("https://api.groq.com/openai/v1", "llama-3.3-70b-versatile", requiere_api_key=True),
+    "ollama": _ProveedorOpenAI("http://host.docker.internal:11434/v1", "qwen2.5:1.5b",
+                               requiere_api_key=False, precalentar_al_iniciar=True),
+    "groq": _ProveedorOpenAI("https://api.groq.com/openai/v1", "llama-3.3-70b-versatile",
+                             requiere_api_key=True, precalentar_al_iniciar=False),
 }
 
 
@@ -38,4 +42,5 @@ def crear_llm_provider(settings: Settings) -> LlmProvider:
         base_url=settings.llm_base_url or proveedor.base_url,
         modelo=settings.llm_model or proveedor.modelo,
         api_key=api_key,
+        precalentar_al_iniciar=proveedor.precalentar_al_iniciar,
     )

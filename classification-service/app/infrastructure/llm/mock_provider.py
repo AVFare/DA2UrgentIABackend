@@ -110,7 +110,14 @@ class MockLlmProvider:
     """Implementa el puerto LlmProvider sin llamar a ningun servicio externo."""
 
     nombre = NOMBRE
+    modelo = MODELO
 
     async def consultar(self, pedido: PedidoLlm) -> RespuestaLlm:
         texto = json.dumps(clasificar_por_reglas(pedido.titulo, pedido.descripcion), ensure_ascii=False)
         return RespuestaLlm(clasificacion=parsear_clasificacion(texto), modelo=MODELO, texto_crudo=texto)
+
+    async def precalentar(self, prompt: str) -> None:
+        """No hay nada que preparar: responde al instante."""
+
+    async def cerrar(self) -> None:
+        """No tiene conexiones abiertas."""

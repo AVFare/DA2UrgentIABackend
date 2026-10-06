@@ -119,6 +119,16 @@ def test_si_el_llm_no_esta_disponible_no_reintenta():
     assert len(llm.pedidos) == 1
 
 
+def test_precalienta_el_llm_con_el_prompt_armado():
+    llm = LlmFalso()
+
+    asyncio.run(crear_facade(llm).precalentar())
+
+    assert llm.prompts_de_precalentamiento == [
+        "Título: Prueba de arranque\nDescripción: Ticket de prueba para preparar el modelo"
+    ]
+
+
 def test_lista_las_clasificaciones_del_repositorio():
     repositorio = RepositorioEnMemoria()
     facade = crear_facade(LlmFalso(CLASIFICACION_CRITICA, CLASIFICACION_CRITICA), repositorio)
