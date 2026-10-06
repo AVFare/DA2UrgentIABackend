@@ -38,7 +38,7 @@ class SwaggerAgregadoTests {
             "/v3/api-docs/user-service,           /v3/api-docs",
             "/v3/api-docs/ticket-service,         /v3/api-docs",
             "/v3/api-docs/classification-service, /openapi.json",
-            "/v3/api-docs/notification-service,   /api-docs-json",
+            "/v3/api-docs/notification-service,   /openapi.json",
             "/v3/api-docs/reporting-service,      /api-docs-json"
     })
     void pideLaDocumentacionDeCadaServicioEnSuRutaYSinToken(String rutaEnElGateway, String rutaEnElServicio) {

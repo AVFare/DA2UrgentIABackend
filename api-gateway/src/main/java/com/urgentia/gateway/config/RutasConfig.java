@@ -50,7 +50,7 @@ public class RutasConfig {
                         .uri(classificationService))
                 .route("docs-notification-service", r -> r
                         .path("/v3/api-docs/notification-service")
-                        .filters(f -> f.setPath("/api-docs-json"))
+                        .filters(f -> f.setPath("/openapi.json"))
                         .uri(notificationService))
                 .route("docs-reporting-service", r -> r
                         .path("/v3/api-docs/reporting-service")
