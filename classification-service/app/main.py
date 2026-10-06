@@ -8,12 +8,11 @@ import logging
 import uvicorn
 from fastapi import FastAPI
 
-from app import __version__
-from app.config import PUERTO, get_settings
-from app.infrastructure.api import health, routes
+from app.config import PUERTO, VERSION, get_settings
 from app.infrastructure.api.correlation import registrar_correlation_id
 from app.infrastructure.api.errors import registrar_manejadores_de_error
 from app.infrastructure.api.openapi import DESCRIPCION, generar_openapi
+from app.infrastructure.api.routes import clasificaciones, health
 from app.infrastructure.logs import configurar_logs
 
 log = logging.getLogger(__name__)
@@ -22,7 +21,7 @@ log = logging.getLogger(__name__)
 def create_app() -> FastAPI:
     app = FastAPI(
         title="UrgentIA - classification-service",
-        version=__version__,
+        version=VERSION,
         description=DESCRIPCION,
         openapi_url="/openapi.json",
         docs_url="/docs",
@@ -31,7 +30,7 @@ def create_app() -> FastAPI:
     registrar_correlation_id(app)
     registrar_manejadores_de_error(app)
     app.include_router(health.router)
-    app.include_router(routes.router)
+    app.include_router(clasificaciones.router)
     app.openapi = lambda: generar_openapi(app)
     return app
 

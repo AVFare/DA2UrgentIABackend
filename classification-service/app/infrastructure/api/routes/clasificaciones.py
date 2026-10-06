@@ -1,8 +1,4 @@
-"""Endpoints de /api/clasificaciones (contrato de la seccion 9.3).
-
-Por ahora solo declaran el contrato. La logica llega con ClasificacionFacade
-(tarjeta "IA real"); mientras tanto responden 500 ERROR_INTERNO.
-"""
+"""Endpoints de /api/clasificaciones (contrato de la seccion 9.3)."""
 
 from typing import Annotated
 from uuid import UUID
@@ -10,12 +6,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Query
 
 from app.infrastructure.api.correlation import HEADER
-from app.infrastructure.api.schemas import (
+from app.infrastructure.api.schemas.clasificacion import (
     ClasificacionResponse,
     ClasificarRequest,
-    ErrorResponse,
     PaginaClasificaciones,
 )
+from app.infrastructure.api.schemas.error import ErrorResponse
 
 
 def _header_correlation_id(
@@ -57,7 +53,7 @@ router = APIRouter(
     },
 )
 def clasificar(pedido: ClasificarRequest) -> ClasificacionResponse:
-    raise NotImplementedError("Se implementa con ClasificacionFacade (tarjeta IA real)")
+    raise NotImplementedError
 
 
 @router.get(
@@ -73,4 +69,4 @@ def listar(
     page: Annotated[int, Query(ge=0, description="Numero de pagina, desde 0")] = 0,
     size: Annotated[int, Query(ge=1, le=100, description="Tamaño de pagina")] = 20,
 ) -> PaginaClasificaciones:
-    raise NotImplementedError("Se implementa con el repositorio de MongoDB (tarjeta IA real)")
+    raise NotImplementedError
