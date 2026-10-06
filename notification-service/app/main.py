@@ -5,7 +5,7 @@ from fastapi import FastAPI
 
 from app.config import settings
 from app.db import get_db
-from app.endpoints import eventos, health
+from app.endpoints import eventos, health, notificaciones
 from app.exceptions.handlers import registrar_handlers
 from app.logging_config import configurar_logging
 from app.middleware.correlation import correlation_id_middleware
@@ -54,6 +54,7 @@ def create_app() -> FastAPI:
     _openapi_sin_422(app)
     app.include_router(health.router)
     app.include_router(eventos.router)
+    app.include_router(notificaciones.router)
     return app
 
 
