@@ -16,6 +16,10 @@ class LlmRespuestaInvalidaError(LlmError):
 class LlmNoDisponibleError(LlmError):
     """No se pudo consultar al LLM: error de conexion o respuesta HTTP con error."""
 
+    def __init__(self, mensaje: str, status_http: int | None = None) -> None:
+        super().__init__(mensaje)
+        self.status_http = status_http
+
 
 class LlmTimeoutError(LlmError):
     """El LLM no respondio dentro del tiempo maximo."""

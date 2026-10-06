@@ -76,8 +76,9 @@ def test_devuelve_la_clasificacion_el_modelo_y_el_texto_crudo():
 
 @pytest.mark.parametrize("status", [401, 429, 500, 503])
 def test_un_error_http_es_llm_no_disponible(status):
-    with pytest.raises(LlmNoDisponibleError, match=f"HTTP {status}"):
+    with pytest.raises(LlmNoDisponibleError, match=f"HTTP {status}") as error:
         consultar(crear_provider(lambda request: httpx2.Response(status, json={"error": "x"})))
+    assert error.value.status_http == status
 
 
 def test_un_error_de_conexion_es_llm_no_disponible():
