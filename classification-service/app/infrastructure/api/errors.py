@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.application.errors import LlmNoDisponibleError, LlmRespuestaInvalidaError, LlmTimeoutError
 from app.infrastructure.api.correlation import obtener_correlation_id
 from app.infrastructure.api.schemas.error import CodigoError, DetalleError, ErrorResponse
 
@@ -76,6 +77,21 @@ def registrar_manejadores_de_error(app: FastAPI) -> None:
         if exc.status_code < 500:
             return respuesta_error(request, exc.status_code, "VALIDACION", str(exc.detail))
         return respuesta_error(request, exc.status_code, "ERROR_INTERNO", "Ocurrio un error inesperado")
+
+    @app.exception_handler(LlmTimeoutError)
+    async def _llm_timeout(request: Request, exc: LlmTimeoutError) -> JSONResponse:
+        log.warning("%s", exc)
+        return respuesta_error(request, 504, "LLM_TIMEOUT", str(exc))
+
+    @app.exception_handler(LlmRespuestaInvalidaError)
+    async def _llm_respuesta_invalida(request: Request, exc: LlmRespuestaInvalidaError) -> JSONResponse:
+        log.warning("Respuesta invalida del LLM: %s", exc)
+        return respuesta_error(request, 502, "LLM_RESPUESTA_INVALIDA", f"La respuesta del LLM no es valida: {exc}")
+
+    @app.exception_handler(LlmNoDisponibleError)
+    async def _llm_no_disponible(request: Request, exc: LlmNoDisponibleError) -> JSONResponse:
+        log.warning("LLM no disponible: %s", exc)
+        return respuesta_error(request, 502, "LLM_RESPUESTA_INVALIDA", f"No se pudo consultar al LLM: {exc}")
 
     @app.exception_handler(Exception)
     async def _inesperado(request: Request, exc: Exception) -> JSONResponse:

@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 from app.application.ports.llm_provider import PedidoLlm, RespuestaLlm
 from app.domain.enums import Categoria, Impacto, ModuloAfectado, Urgencia
+from app.infrastructure.llm.response_parser import parsear_clasificacion
 
 NOMBRE = "mock"
 MODELO = "mock-v1"
@@ -109,7 +110,14 @@ class MockLlmProvider:
     """Implementa el puerto LlmProvider sin llamar a ningun servicio externo."""
 
     nombre = NOMBRE
+    modelo = MODELO
 
     async def consultar(self, pedido: PedidoLlm) -> RespuestaLlm:
-        resultado = clasificar_por_reglas(pedido.titulo, pedido.descripcion)
-        return RespuestaLlm(texto=json.dumps(resultado, ensure_ascii=False), modelo=MODELO)
+        texto = json.dumps(clasificar_por_reglas(pedido.titulo, pedido.descripcion), ensure_ascii=False)
+        return RespuestaLlm(clasificacion=parsear_clasificacion(texto), modelo=MODELO, texto_crudo=texto)
+
+    async def precalentar(self, prompt: str) -> None:
+        """No hay nada que preparar: responde al instante."""
+
+    async def cerrar(self) -> None:
+        """No tiene conexiones abiertas."""

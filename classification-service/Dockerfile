@@ -12,6 +12,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY app ./app
+COPY prompts ./prompts
 
 RUN useradd --create-home --uid 10001 servicio
 USER servicio

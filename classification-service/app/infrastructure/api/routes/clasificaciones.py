@@ -3,8 +3,9 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, Query, Request
 
+from app.application.clasificacion_facade import ClasificacionFacade
 from app.infrastructure.api.correlation import HEADER
 from app.infrastructure.api.schemas.clasificacion import (
     ClasificacionResponse,
@@ -21,6 +22,13 @@ def _header_correlation_id(
     ] = None,
 ) -> None:
     """Solo documenta el header en el OpenAPI; lo procesa el middleware de correlation.py."""
+
+
+def _facade(request: Request) -> ClasificacionFacade:
+    return request.app.state.facade
+
+
+Facade = Annotated[ClasificacionFacade, Depends(_facade)]
 
 
 _ERRORES_COMUNES = {
@@ -48,12 +56,16 @@ router = APIRouter(
     response_model=ClasificacionResponse,
     response_description="Clasificacion sugerida por la IA",
     responses={
-        502: {"model": ErrorResponse, "description": "LLM_RESPUESTA_INVALIDA - el LLM devolvio algo que no valida"},
+        502: {
+            "model": ErrorResponse,
+            "description": "LLM_RESPUESTA_INVALIDA - el LLM devolvio algo que no valida o respondio con error",
+        },
         504: {"model": ErrorResponse, "description": "LLM_TIMEOUT - el LLM no respondio a tiempo"},
     },
 )
-def clasificar(pedido: ClasificarRequest) -> ClasificacionResponse:
-    raise NotImplementedError
+async def clasificar(pedido: ClasificarRequest, facade: Facade) -> ClasificacionResponse:
+    registro = await facade.clasificar(pedido.ticket_id, pedido.titulo, pedido.descripcion)
+    return ClasificacionResponse.desde_registro(registro)
 
 
 @router.get(
@@ -64,9 +76,10 @@ def clasificar(pedido: ClasificarRequest) -> ClasificacionResponse:
     response_model=PaginaClasificaciones,
     response_description="Pagina de clasificaciones (mas reciente primero)",
 )
-def listar(
+async def listar(
+    facade: Facade,
     ticket_id: Annotated[UUID | None, Query(alias="ticketId", description="Filtra por ticket (UUID)")] = None,
     page: Annotated[int, Query(ge=0, description="Numero de pagina, desde 0")] = 0,
     size: Annotated[int, Query(ge=1, le=100, description="Tamaño de pagina")] = 20,
 ) -> PaginaClasificaciones:
-    raise NotImplementedError
+    return PaginaClasificaciones.desde_pagina(await facade.listar(ticket_id, page, size))

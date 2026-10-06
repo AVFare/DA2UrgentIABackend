@@ -6,7 +6,9 @@ asi que no puede existir una Clasificacion invalida, venga del LLM real o del mo
 
 import math
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
+from uuid import UUID
 
 from app.domain.enums import Categoria, Impacto, ModuloAfectado, Urgencia
 
@@ -57,6 +59,25 @@ class Clasificacion:
 
     def _fijar(self, campo: str, valor: object) -> None:
         object.__setattr__(self, campo, valor)
+
+
+@dataclass(frozen=True)
+class RegistroClasificacion:
+    """Una clasificacion guardada: la sugerencia de la IA y como se obtuvo.
+
+    texto_enmascarado y respuesta_cruda nunca contienen datos personales.
+    """
+
+    ticket_id: UUID
+    clasificacion: Clasificacion
+    proveedor: str
+    modelo: str
+    version_prompt: str
+    latencia_ms: int
+    fecha: datetime
+    texto_enmascarado: str
+    respuesta_cruda: str
+    id: str | None = None
 
 
 def _enum[E: StrEnum](tipo: type[E], valor: object, campo: str) -> E:
