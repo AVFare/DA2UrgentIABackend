@@ -41,8 +41,7 @@ LIMITE_LATENCIA_MS = 5000
 ESPERA_POR_LIMITE_S = 15
 REINTENTOS_POR_LIMITE = 8
 
-# Matriz de la seccion 8.1. La prioridad la decide ticket-service; aca se calcula solo para
-# medir que prioridad final resultaria de cada sugerencia de la IA.
+# Matriz de prioridad (CONTEXTO_PROYECTO.md, 8.1): mide que prioridad resultaria de cada sugerencia.
 _MATRIZ = {
     ("ALTA", "ALTO"): "P1", ("ALTA", "MEDIO"): "P2", ("ALTA", "BAJO"): "P3",
     ("MEDIA", "ALTO"): "P2", ("MEDIA", "MEDIO"): "P3", ("MEDIA", "BAJO"): "P4",

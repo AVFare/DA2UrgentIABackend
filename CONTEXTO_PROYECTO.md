@@ -889,7 +889,7 @@ Descripción: {descripcion}
 
 **Criterio de aceptación (RIA01):** ≥ 80% de acierto en `categoria` y ≥ 90% en `requiereEscalamiento` sobre los 20 casos, con el proveedor real.
 
-**Resultados** (`python -m scripts.evaluar`; detalle en `classification-service/tests/data/resultados/`):
+**Resultados** (`python -m scripts.evaluar`, que guarda el detalle en `classification-service/tests/data/resultados/`, fuera del repo):
 
 | Proveedor / modelo | Prompt | categoria | requiereEscalamiento | prioridad | Latencia mediana | RIA01 |
 |---|---|---|---|---|---|---|

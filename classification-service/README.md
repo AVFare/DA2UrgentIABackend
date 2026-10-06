@@ -106,7 +106,7 @@ modelo y procesar la parte fija del prompt tarda varios segundos. Sin Docker, ag
 
 `tests/data/tickets_eval.json` tiene 20 tickets etiquetados. El evaluador los clasifica con el
 proveedor configurado, por el mismo camino que en producción, y guarda el detalle y un resumen
-en `tests/data/resultados/evaluacion_<proveedor>_<modelo>_<prompt>.{json,md}`:
+en `tests/data/resultados/evaluacion_<proveedor>_<modelo>_<prompt>.{json,md}` (carpeta ignorada por git):
 
 ```bash
 LLM_PROVIDER=groq LLM_API_KEY=... python -m scripts.evaluar
@@ -157,7 +157,7 @@ app/
     logs.py         logs JSON con correlationId
 prompts/            clasificacion_v1.txt, clasificacion_v2.txt
 scripts/            exportar_openapi.py, evaluar.py (evaluación RIA01)
-tests/              fakes.py (dobles de los puertos), test_*.py, data/ (set de evaluación y resultados)
+tests/              fakes.py (dobles de los puertos), test_*.py, data/tickets_eval.json (set de evaluación)
 ```
 
 Las dependencias apuntan hacia adentro: `infrastructure → application → domain`.
