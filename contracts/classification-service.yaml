@@ -79,7 +79,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '502':
-          description: LLM_RESPUESTA_INVALIDA - el LLM devolvio algo que no valida
+          description: LLM_RESPUESTA_INVALIDA - el LLM devolvio algo que no valida o respondio con error
           content:
             application/json:
               schema:

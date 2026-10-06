@@ -5,7 +5,9 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field
 
+from app.application.ports.clasificacion_repository import Pagina
 from app.domain.enums import Categoria, Impacto, ModuloAfectado, Urgencia
+from app.domain.models import RegistroClasificacion
 from app.infrastructure.api.schemas.base import CamelModel
 
 
@@ -71,6 +73,26 @@ class ClasificacionResponse(CamelModel):
     latencia_ms: int = Field(description="Tiempo total de la llamada al LLM, reintento incluido")
     fecha: datetime
 
+    @classmethod
+    def desde_registro(cls, registro: RegistroClasificacion) -> "ClasificacionResponse":
+        clasificacion = registro.clasificacion
+        return cls(
+            id=registro.id,
+            ticket_id=registro.ticket_id,
+            categoria=clasificacion.categoria,
+            urgencia=clasificacion.urgencia,
+            impacto=clasificacion.impacto,
+            modulo_afectado=clasificacion.modulo_afectado,
+            requiere_escalamiento=clasificacion.requiere_escalamiento,
+            confianza=clasificacion.confianza,
+            justificacion=clasificacion.justificacion,
+            proveedor=registro.proveedor,
+            modelo=registro.modelo,
+            version_prompt=registro.version_prompt,
+            latencia_ms=registro.latencia_ms,
+            fecha=registro.fecha,
+        )
+
 
 class PaginaClasificaciones(CamelModel):
     """Pagina de clasificaciones con el formato comun de paginacion (seccion 5)."""
@@ -80,3 +102,13 @@ class PaginaClasificaciones(CamelModel):
     size: int
     total_elements: int
     total_pages: int
+
+    @classmethod
+    def desde_pagina(cls, pagina: Pagina[RegistroClasificacion]) -> "PaginaClasificaciones":
+        return cls(
+            content=[ClasificacionResponse.desde_registro(registro) for registro in pagina.elementos],
+            page=pagina.page,
+            size=pagina.size,
+            total_elements=pagina.total,
+            total_pages=pagina.total_pages,
+        )
