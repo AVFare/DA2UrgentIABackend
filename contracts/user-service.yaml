@@ -1,0 +1,478 @@
+openapi: 3.0.3
+info:
+  title: UrgentIA - user-service
+  version: 0.1.0
+  description: |
+    Identidad y acceso de UrgentIA: alta de usuarios, listado y login con JWT.
+
+    Este servicio emite el JWT (HS256, claims sub/email/nombre/rol/iss/iat/exp). El gateway
+    (http://localhost:8080) es el unico que valida el token; a los demas servicios les pasa
+    los headers X-User-Id y X-User-Rol. El rol de cada ruta lo controla el gateway (seccion 6.1):
+    este servicio no vuelve a chequear roles, confia en la red interna.
+
+    `POST /api/auth/login` y `GET /health` son publicos. Todo lo demas requiere Authorization: Bearer <jwt>.
+
+    Fuente de verdad: CONTEXTO_PROYECTO.md, secciones 5, 6, 7 y 9.1. Dueño: P3.
+servers:
+  - url: http://localhost:8080
+    description: A traves del api-gateway
+  - url: http://localhost:8083
+    description: Directo al servicio (solo desarrollo)
+security:
+  - bearer: []
+tags:
+  - name: Auth
+  - name: Usuarios
+  - name: Health
+
+paths:
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Iniciar sesion
+      description: |
+        Devuelve un JWT valido por JWT_EXPIRATION_MINUTES (60 min por defecto; expiresIn va en segundos).
+        Email inexistente, contraseña incorrecta o usuario inactivo devuelven siempre el mismo
+        401 CREDENCIALES_INVALIDAS, para no revelar cual de los tres paso.
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              admin:
+                value:
+                  email: admin@urgentia.local
+                  password: Admin123!
+              solicitante:
+                value:
+                  email: solicitante@urgentia.local
+                  password: Usuario123!
+      responses:
+        '200':
+          description: Login correcto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              examples:
+                admin:
+                  $ref: '#/components/examples/LoginAdmin'
+                solicitante:
+                  $ref: '#/components/examples/LoginSolicitante'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/CredencialesInvalidas'
+
+  /api/usuarios:
+    post:
+      tags: [Usuarios]
+      summary: Crear un usuario
+      description: |
+        El gateway solo deja pasar esta ruta a ADMIN. El email se normaliza a minusculas;
+        si ya existe (sin importar mayusculas/minusculas), 409 EMAIL_DUPLICADO. La contraseña
+        se guarda con BCrypt; nunca se devuelve en la respuesta.
+      operationId: crearUsuario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearUsuarioRequest'
+            example:
+              nombre: Ana Agente
+              email: ana@urgentia.local
+              password: Segura123!
+              rol: AGENTE
+      responses:
+        '201':
+          description: Usuario creado
+          headers:
+            Location:
+              description: URL del usuario creado
+              schema:
+                type: string
+                example: /api/usuarios/b1c2d3e4-0000-4000-8000-000000000006
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '409':
+          $ref: '#/components/responses/EmailDuplicado'
+    get:
+      tags: [Usuarios]
+      summary: Listar usuarios
+      description: |
+        El gateway deja pasar esta ruta a AGENTE y ADMIN. Filtro opcional por rol.
+        Paginacion igual que el resto de los servicios (seccion 5).
+      operationId: listarUsuarios
+      parameters:
+        - name: rol
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Rol'
+        - name: page
+          in: query
+          required: false
+          description: Numero de pagina, desde 0
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          description: Tamaño de pagina
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Pagina de usuarios
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaUsuarios'
+        '400':
+          $ref: '#/components/responses/Validacion'
+
+  /api/usuarios/{id}:
+    get:
+      tags: [Usuarios]
+      summary: Ver un usuario
+      operationId: obtenerUsuario
+      parameters:
+        - $ref: '#/components/parameters/UsuarioId'
+      responses:
+        '200':
+          description: El usuario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+              examples:
+                admin:
+                  $ref: '#/components/examples/UsuarioAdmin'
+                guardia:
+                  $ref: '#/components/examples/UsuarioGuardia'
+                soporte:
+                  $ref: '#/components/examples/UsuarioSoporte'
+                solicitante:
+                  $ref: '#/components/examples/UsuarioSolicitante'
+                solicitante2:
+                  $ref: '#/components/examples/UsuarioSolicitante2'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+
+  /health:
+    get:
+      tags: [Health]
+      summary: Estado del servicio
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: El servicio esta arriba
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: UP
+                  service:
+                    type: string
+                    example: user-service
+                  version:
+                    type: string
+                    example: 0.1.0
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token de POST /api/auth/login (lo emite este servicio). Lo valida el gateway.
+
+  parameters:
+    UsuarioId:
+      name: id
+      in: path
+      required: true
+      description: Id del usuario (UUID)
+      schema:
+        type: string
+        format: uuid
+        example: b1c2d3e4-0000-4000-8000-000000000001
+
+  responses:
+    Validacion:
+      description: VALIDACION - body o parametros invalidos
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: VALIDACION
+            mensaje: El pedido tiene datos invalidos
+            detalles:
+              - campo: email
+                mensaje: debe ser un email valido
+            timestamp: '2026-10-05T14:03:11Z'
+            path: /api/usuarios
+            correlationId: a8e1b2c3-0000-4000-8000-000000000000
+    CredencialesInvalidas:
+      description: CREDENCIALES_INVALIDAS - email inexistente, contraseña incorrecta o usuario inactivo (mismo codigo en los tres casos)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: CREDENCIALES_INVALIDAS
+            mensaje: Email o contraseña invalidos
+            timestamp: '2026-10-05T14:03:11Z'
+            path: /api/auth/login
+            correlationId: a8e1b2c3-0000-4000-8000-000000000000
+    NoEncontrado:
+      description: NO_ENCONTRADO - el usuario no existe
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: NO_ENCONTRADO
+            mensaje: No existe el usuario b1c2d3e4-0000-4000-8000-000000000099
+            timestamp: '2026-10-05T14:03:11Z'
+            path: /api/usuarios/b1c2d3e4-0000-4000-8000-000000000099
+            correlationId: a8e1b2c3-0000-4000-8000-000000000000
+    EmailDuplicado:
+      description: EMAIL_DUPLICADO - ya existe un usuario con ese email
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: EMAIL_DUPLICADO
+            mensaje: Ya existe un usuario con el email ana@urgentia.local
+            detalles:
+              - campo: email
+                mensaje: ya esta en uso
+            timestamp: '2026-10-05T14:03:11Z'
+            path: /api/usuarios
+            correlationId: a8e1b2c3-0000-4000-8000-000000000000
+
+  schemas:
+    Rol:
+      type: string
+      enum: [SOLICITANTE, AGENTE, ADMIN]
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      required: [accessToken, tokenType, expiresIn, usuario]
+      properties:
+        accessToken:
+          type: string
+          example: eyJhbGciOiJIUzI1NiJ9...
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          description: Segundos hasta que expira el token (JWT_EXPIRATION_MINUTES * 60)
+          example: 3600
+        usuario:
+          type: object
+          description: Datos minimos del usuario autenticado (seccion 9.1). No incluye activo ni fechaAlta.
+          required: [id, nombre, email, rol]
+          properties:
+            id:
+              type: string
+              format: uuid
+            nombre:
+              type: string
+            email:
+              type: string
+              format: email
+            rol:
+              $ref: '#/components/schemas/Rol'
+
+    CrearUsuarioRequest:
+      type: object
+      required: [nombre, email, password, rol]
+      properties:
+        nombre:
+          type: string
+          maxLength: 120
+          description: Maximo propuesto por P3 (pendiente de acordar).
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: Se normaliza a minusculas. Maximo propuesto por P3 (pendiente de acordar).
+        password:
+          type: string
+          minLength: 8
+          description: Minimo propuesto por P3 (pendiente de acordar). Se guarda con BCrypt, nunca en texto plano.
+        rol:
+          $ref: '#/components/schemas/Rol'
+
+    Usuario:
+      type: object
+      description: Nunca incluye la contraseña ni el hash.
+      required: [id, nombre, email, rol, activo, fechaAlta]
+      properties:
+        id:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+        email:
+          type: string
+          format: email
+        rol:
+          $ref: '#/components/schemas/Rol'
+        activo:
+          type: boolean
+        fechaAlta:
+          type: string
+          format: date-time
+
+    PaginaUsuarios:
+      type: object
+      required: [content, page, size, totalElements, totalPages]
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/Usuario'
+        page:
+          type: integer
+          example: 0
+        size:
+          type: integer
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          example: 5
+        totalPages:
+          type: integer
+          example: 1
+
+    Error:
+      type: object
+      description: Formato comun de error (seccion 5.3)
+      required: [codigo, mensaje, timestamp, path, correlationId]
+      properties:
+        codigo:
+          type: string
+          enum: [VALIDACION, CREDENCIALES_INVALIDAS, NO_ENCONTRADO, EMAIL_DUPLICADO, ERROR_INTERNO]
+        mensaje:
+          type: string
+        detalles:
+          type: array
+          description: Solo en errores de validacion
+          items:
+            type: object
+            properties:
+              campo:
+                type: string
+              mensaje:
+                type: string
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+        correlationId:
+          type: string
+
+  examples:
+    LoginAdmin:
+      summary: Login de Ada Admin (usuario semilla)
+      value:
+        accessToken: eyJhbGciOiJIUzI1NiJ9...
+        tokenType: Bearer
+        expiresIn: 3600
+        usuario:
+          id: b1c2d3e4-0000-4000-8000-000000000001
+          nombre: Ada Admin
+          email: admin@urgentia.local
+          rol: ADMIN
+    LoginSolicitante:
+      summary: Login de Sofía Solicitante (usuario semilla, usado en la demo)
+      value:
+        accessToken: eyJhbGciOiJIUzI1NiJ9...
+        tokenType: Bearer
+        expiresIn: 3600
+        usuario:
+          id: b1c2d3e4-0000-4000-8000-000000000004
+          nombre: Sofía Solicitante
+          email: solicitante@urgentia.local
+          rol: SOLICITANTE
+    UsuarioAdmin:
+      summary: Ada Admin (usuario semilla)
+      value:
+        id: b1c2d3e4-0000-4000-8000-000000000001
+        nombre: Ada Admin
+        email: admin@urgentia.local
+        rol: ADMIN
+        activo: true
+        fechaAlta: '2026-10-01T12:00:00Z'
+    UsuarioGuardia:
+      summary: Guido Guardia (usuario semilla, equipo de guardia)
+      value:
+        id: b1c2d3e4-0000-4000-8000-000000000002
+        nombre: Guido Guardia
+        email: guardia@urgentia.local
+        rol: AGENTE
+        activo: true
+        fechaAlta: '2026-10-01T12:00:00Z'
+    UsuarioSoporte:
+      summary: Sara Soporte (usuario semilla)
+      value:
+        id: b1c2d3e4-0000-4000-8000-000000000003
+        nombre: Sara Soporte
+        email: soporte@urgentia.local
+        rol: AGENTE
+        activo: true
+        fechaAlta: '2026-10-01T12:00:00Z'
+    UsuarioSolicitante:
+      summary: Sofía Solicitante (usuario semilla, usado en la demo)
+      value:
+        id: b1c2d3e4-0000-4000-8000-000000000004
+        nombre: Sofía Solicitante
+        email: solicitante@urgentia.local
+        rol: SOLICITANTE
+        activo: true
+        fechaAlta: '2026-10-01T12:00:00Z'
+    UsuarioSolicitante2:
+      summary: Santiago Solicitante (usuario semilla)
+      value:
+        id: b1c2d3e4-0000-4000-8000-000000000005
+        nombre: Santiago Solicitante
+        email: solicitante2@urgentia.local
+        rol: SOLICITANTE
+        activo: true
+        fechaAlta: '2026-10-01T12:00:00Z'
