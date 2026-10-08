@@ -1,0 +1,50 @@
+server:
+  port: 8083
+  # Respeta los X-Forwarded-* del gateway: asi el Swagger unificado arma bien las URLs
+  # y "Try it out" pasa por http://localhost:8080 (seccion 18 del contexto).
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: user-service
+  main:
+    banner-mode: "off"
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/users_db}
+    username: ${DB_USER:users_user}
+    # Sin valor por defecto a proposito: la contraseña llega solo por variable de entorno.
+    password: ${DB_PASSWORD}
+  jpa:
+    open-in-view: false
+    # El esquema lo maneja Flyway (src/main/resources/db/migration).
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+
+# Una linea JSON por evento: timestamp, level, service, correlationId, message.
+logging:
+  structured:
+    format:
+      console: com.urgentia.user.config.LogJsonFormatter
+  level:
+    root: ${LOG_LEVEL:INFO}
+
+# Lo informa GET /health. Mantener igual que <version> del pom.xml.
+servicio:
+  version: 0.1.0
+
+# JWT emitido por POST /api/auth/login (seccion 6 del contexto).
+jwt:
+  secret: ${JWT_SECRET}
+  expiration-minutes: ${JWT_EXPIRATION_MINUTES:60}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
