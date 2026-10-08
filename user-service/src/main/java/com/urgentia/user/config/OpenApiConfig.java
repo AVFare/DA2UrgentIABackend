@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * Datos del Swagger de user-service. Declara el esquema "bearer" para que el
- * Swagger unificado del gateway muestre el boton Authorize (seccion 18 del contexto).
+ * Swagger unificado del gateway muestre el boton Authorize.
  */
 @Configuration
 public class OpenApiConfig {

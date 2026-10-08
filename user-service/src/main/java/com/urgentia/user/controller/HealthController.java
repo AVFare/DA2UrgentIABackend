@@ -7,7 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** GET /health con el formato comun a todos los servicios (seccion 5 del contexto). */
+/** GET /health con el formato comun a todos los servicios. */
 @RestController
 @Tag(name = "Health")
 public class HealthController {

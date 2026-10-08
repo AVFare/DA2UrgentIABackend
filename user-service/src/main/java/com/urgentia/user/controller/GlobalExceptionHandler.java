@@ -35,7 +35,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 /**
- * Convierte toda excepcion en el formato comun de error (seccion 5.3), con el correlationId
+ * Convierte toda excepcion en el formato comun de error, con el correlationId
  * del pedido. Nunca devuelve el stacktrace: los errores inesperados se loguean y se responde 500.
  *
  * <p>Las excepciones de negocio propias de user-service (CREDENCIALES_INVALIDAS, NO_ENCONTRADO,

@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-/** Formato comun de error del proyecto (seccion 5.3). detalles solo va en errores de validacion. */
+/** Formato comun de error del proyecto. detalles solo va en errores de validacion. */
 @Schema(name = "Error")
 public record ErrorResponse(
         @Schema(example = "EMAIL_DUPLICADO") String codigo,

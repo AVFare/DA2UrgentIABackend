@@ -1,7 +1,7 @@
 server:
   port: 8083
   # Respeta los X-Forwarded-* del gateway: asi el Swagger unificado arma bien las URLs
-  # y "Try it out" pasa por http://localhost:8080 (seccion 18 del contexto).
+  # y "Try it out" pasa por http://localhost:8080.
   forward-headers-strategy: framework
 
 spring:
@@ -38,7 +38,7 @@ logging:
 servicio:
   version: 0.1.0
 
-# JWT emitido por POST /api/auth/login (seccion 6 del contexto).
+# JWT emitido por POST /api/auth/login.
 jwt:
   secret: ${JWT_SECRET}
   expiration-minutes: ${JWT_EXPIRATION_MINUTES:60}
