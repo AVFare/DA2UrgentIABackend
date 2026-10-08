@@ -5,6 +5,10 @@ import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.urgentia.user.config.CorrelationIdFilter;
 import com.urgentia.user.dto.ErrorResponse;
 import com.urgentia.user.dto.ErrorResponse.Detalle;
+import com.urgentia.user.service.CredencialesInvalidasException;
+import com.urgentia.user.service.DatosInvalidosException;
+import com.urgentia.user.service.EmailDuplicadoException;
+import com.urgentia.user.service.UsuarioNoEncontradoException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -37,14 +41,34 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 /**
  * Convierte toda excepcion en el formato comun de error, con el correlationId
  * del pedido. Nunca devuelve el stacktrace: los errores inesperados se loguean y se responde 500.
- *
- * <p>Las excepciones de negocio propias de user-service (CREDENCIALES_INVALIDAS, NO_ENCONTRADO,
- * EMAIL_DUPLICADO) se agregan en el Paso 3, junto con los casos de uso que las lanzan.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    // ------------------------------------------------------------------ errores del negocio
+
+    @ExceptionHandler(CredencialesInvalidasException.class)
+    public ResponseEntity<Object> credencialesInvalidas(CredencialesInvalidasException e, HttpServletRequest pedido) {
+        return error(HttpStatus.UNAUTHORIZED, "CREDENCIALES_INVALIDAS", e.getMessage(), null, ruta(pedido), null);
+    }
+
+    @ExceptionHandler(EmailDuplicadoException.class)
+    public ResponseEntity<Object> emailDuplicado(EmailDuplicadoException e, HttpServletRequest pedido) {
+        return error(HttpStatus.CONFLICT, "EMAIL_DUPLICADO", e.getMessage(), null, ruta(pedido), null);
+    }
+
+    @ExceptionHandler(UsuarioNoEncontradoException.class)
+    public ResponseEntity<Object> usuarioNoEncontrado(UsuarioNoEncontradoException e, HttpServletRequest pedido) {
+        return error(HttpStatus.NOT_FOUND, "NO_ENCONTRADO", e.getMessage(), null, ruta(pedido), null);
+    }
+
+    @ExceptionHandler(DatosInvalidosException.class)
+    public ResponseEntity<Object> datosInvalidos(DatosInvalidosException e, HttpServletRequest pedido) {
+        return error(HttpStatus.BAD_REQUEST, "VALIDACION", "El pedido tiene datos invalidos",
+                List.of(new Detalle(e.campo(), e.getMessage())), ruta(pedido), null);
+    }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Object> inesperado(Exception e, HttpServletRequest pedido) {
