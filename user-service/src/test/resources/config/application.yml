@@ -6,3 +6,8 @@ spring:
     driver-class-name: org.h2.Driver
     username: sa
     password: ""
+
+# Secreto de prueba (JwtService exige 32 caracteres como minimo).
+jwt:
+  secret: clave-de-pruebas-de-al-menos-32-caracteres-para-los-tests
+
