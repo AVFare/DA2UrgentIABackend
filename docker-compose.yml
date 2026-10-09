@@ -57,6 +57,24 @@ services:
       retries: 20
     networks: [urgentia-net]
 
+  user-service:
+    build: ./user-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/users_db
+      DB_USER: users_user
+      DB_PASSWORD: ${USERS_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES:-60}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8083/health"]
+      interval: 5s
+      retries: 20
+    networks: [urgentia-net]
+
   ticket-service:
     build: ./ticket-service
     environment:
