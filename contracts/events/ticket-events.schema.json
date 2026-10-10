@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://urgentia.local/contracts/events/ticket-events.schema.json",
+  "title": "Evento de ticket (UrgentIA)",
+  "description": "Sobre estandar de los eventos que publica ticket-service (CONTEXTO_PROYECTO.md, seccion 10). Es el mismo en la Defensa 1 (HTTP POST /api/eventos) y en la parte 2 (broker). Dueños: P5 con P2 y P6. Borrador propuesto por P2 (productor): pendiente de aprobacion de P5 y P6.",
+  "type": "object",
+  "required": ["eventId", "eventType", "version", "occurredAt", "correlationId", "source", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "eventId": {
+      "description": "Id unico del evento (UUID v4). Los consumidores lo usan para la idempotencia.",
+      "$ref": "#/$defs/uuid"
+    },
+    "eventType": {
+      "description": "Tipo de evento (enum TipoEvento, seccion 7).",
+      "enum": ["TicketCreado", "TicketClasificado", "TicketEscalado", "TicketAsignado", "TicketEstadoCambiado", "TicketResuelto"]
+    },
+    "version": {
+      "description": "Version del formato del sobre.",
+      "const": 1
+    },
+    "occurredAt": {
+      "description": "Cuando ocurrio el cambio en el agregado (UTC).",
+      "$ref": "#/$defs/fecha"
+    },
+    "correlationId": {
+      "description": "El X-Correlation-Id del pedido que origino el evento.",
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "const": "ticket-service"
+    },
+    "payload": {
+      "$ref": "#/$defs/payload"
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "eventType": { "const": "TicketEscalado" } } },
+      "then": {
+        "properties": { "payload": { "required": ["ticket", "estadoAnterior", "motivo"] } }
+      }
+    },
+    {
+      "if": { "properties": { "eventType": { "enum": ["TicketEstadoCambiado", "TicketResuelto"] } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "required": ["ticket", "estadoAnterior"],
+            "not": { "required": ["motivo"] }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "eventType": { "enum": ["TicketCreado", "TicketClasificado", "TicketAsignado"] } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "not": { "anyOf": [ { "required": ["estadoAnterior"] }, { "required": ["motivo"] } ] }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "fecha": {
+      "description": "ISO-8601 en UTC con Z, por ejemplo 2026-10-05T14:03:11Z.",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+    },
+    "estadoTicket": {
+      "enum": ["NUEVO", "PENDIENTE_CLASIFICACION", "CLASIFICADO", "ASIGNADO", "EN_CURSO", "ESCALADO", "RESUELTO", "CERRADO"]
+    },
+    "payload": {
+      "type": "object",
+      "required": ["ticket"],
+      "additionalProperties": false,
+      "properties": {
+        "ticket": { "$ref": "#/$defs/ticket" },
+        "estadoAnterior": {
+          "description": "Va en TicketEstadoCambiado, TicketEscalado y TicketResuelto.",
+          "$ref": "#/$defs/estadoTicket"
+        },
+        "motivo": {
+          "description": "Va solo en TicketEscalado.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "ticket": {
+      "description": "Foto del ticket despues del cambio. No incluye la descripcion (puede tener datos sensibles).",
+      "type": "object",
+      "required": ["ticketId", "titulo", "estado", "prioridad", "categoria", "moduloAfectado", "solicitanteId", "agenteAsignadoId", "fechaCreacion", "fechaLimiteSla"],
+      "additionalProperties": false,
+      "properties": {
+        "ticketId": { "$ref": "#/$defs/uuid" },
+        "titulo": { "type": "string", "minLength": 5, "maxLength": 120 },
+        "estado": { "$ref": "#/$defs/estadoTicket" },
+        "prioridad": {
+          "description": "null mientras el ticket no esta clasificado.",
+          "enum": ["P1", "P2", "P3", "P4", null]
+        },
+        "categoria": {
+          "description": "null mientras el ticket no esta clasificado.",
+          "enum": ["INCIDENTE", "SOLICITUD", "CONSULTA", "BUG", null]
+        },
+        "moduloAfectado": {
+          "description": "null mientras el ticket no esta clasificado.",
+          "enum": ["AUTENTICACION", "FACTURACION", "PAGOS", "REPORTES", "INFRAESTRUCTURA", "BASE_DE_DATOS", "INTEGRACIONES", "OTRO", null]
+        },
+        "solicitanteId": { "$ref": "#/$defs/uuid" },
+        "agenteAsignadoId": {
+          "description": "null si no tiene agente.",
+          "anyOf": [ { "$ref": "#/$defs/uuid" }, { "type": "null" } ]
+        },
+        "fechaCreacion": { "$ref": "#/$defs/fecha" },
+        "fechaLimiteSla": {
+          "description": "null mientras el ticket no esta clasificado.",
+          "anyOf": [ { "$ref": "#/$defs/fecha" }, { "type": "null" } ]
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "eventId": "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "eventType": "TicketEscalado",
+      "version": 1,
+      "occurredAt": "2026-10-05T14:03:12Z",
+      "correlationId": "a8e1b2c3-0000-4000-8000-000000000000",
+      "source": "ticket-service",
+      "payload": {
+        "ticket": {
+          "ticketId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+          "titulo": "No puede ingresar nadie",
+          "estado": "ESCALADO",
+          "prioridad": "P1",
+          "categoria": "INCIDENTE",
+          "moduloAfectado": "AUTENTICACION",
+          "solicitanteId": "b1c2d3e4-0000-4000-8000-000000000004",
+          "agenteAsignadoId": null,
+          "fechaCreacion": "2026-10-05T14:03:10Z",
+          "fechaLimiteSla": "2026-10-05T15:03:11Z"
+        },
+        "estadoAnterior": "CLASIFICADO",
+        "motivo": "Prioridad P1"
+      }
+    }
+  ]
+}

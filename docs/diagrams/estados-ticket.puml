@@ -1,0 +1,38 @@
+@startuml estados-ticket
+title UrgentIA - ticket-service: estados del ticket (seccion 8.4)
+
+skinparam shadowing false
+hide empty description
+
+[*] --> NUEVO : TicketFactory.crear()\n[TicketCreado]
+
+NUEVO --> CLASIFICADO : la IA respondio\n[TicketClasificado]
+NUEVO --> PENDIENTE_CLASIFICACION : la IA fallo o tardo > 7 s
+PENDIENTE_CLASIFICACION --> CLASIFICADO : POST /reclasificacion\n[TicketClasificado]
+
+CLASIFICADO --> CLASIFICADO : POST /reclasificacion\n(recalcula prioridad y SLA)
+CLASIFICADO --> ESCALADO : automatico si la prioridad final es P1\n(o la IA lo marca critico)\n[TicketEscalado]
+CLASIFICADO --> ASIGNADO : PATCH /asignacion\n[TicketAsignado, TicketEstadoCambiado]
+
+ASIGNADO --> EN_CURSO : PATCH /estado\n[TicketEstadoCambiado]
+ASIGNADO --> ESCALADO : PATCH /estado + motivo\n[TicketEstadoCambiado, TicketEscalado]
+EN_CURSO --> ESCALADO : PATCH /estado + motivo\n[TicketEstadoCambiado, TicketEscalado]
+ESCALADO --> ESCALADO : PATCH /asignacion\n(asigna sin cambiar estado)\n[TicketAsignado]
+ESCALADO --> EN_CURSO : PATCH /estado\nrequiere agente asignado\n[TicketEstadoCambiado]
+EN_CURSO --> RESUELTO : PATCH /estado\n[TicketEstadoCambiado, TicketResuelto]
+RESUELTO --> EN_CURSO : PATCH /estado (reabrir)\n[TicketEstadoCambiado]
+RESUELTO --> CERRADO : PATCH /estado\n[TicketEstadoCambiado]
+CERRADO --> [*]
+
+note right of PENDIENTE_CLASIFICACION
+  Sin prioridad ni SLA (null).
+  El alta responde 201 igual.
+end note
+
+note left of CERRADO
+  Cualquier otra transicion:
+  409 TRANSICION_INVALIDA.
+  EN_CURSO o RESUELTO sin agente:
+  409 REGLA_DE_NEGOCIO.
+end note
+@enduml

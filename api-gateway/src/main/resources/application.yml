@@ -1,0 +1,47 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  main:
+    banner-mode: "off"
+
+# Una linea JSON por evento: timestamp, level, service, correlationId, message.
+logging:
+  structured:
+    format:
+      console: com.urgentia.gateway.config.LogJsonFormatter
+
+# Lo informa GET /health. Mantener igual que <version> del pom.xml.
+servicio:
+  version: 0.1.0
+
+servicios:
+  user: ${USER_SERVICE_URL:http://localhost:8083}
+  ticket: ${TICKET_SERVICE_URL:http://localhost:8081}
+  classification: ${CLASSIFICATION_SERVICE_URL:http://localhost:8082}
+  notification: ${NOTIFICATION_SERVICE_URL:http://localhost:8084}
+  reporting: ${REPORTING_SERVICE_URL:http://localhost:8085}
+
+# Sin valor por defecto a proposito: si falta JWT_SECRET, el gateway no arranca.
+jwt:
+  secret: ${JWT_SECRET}
+
+# Swagger unificado en /swagger-ui.html, con un selector por servicio.
+# Cada url pasa por una ruta "docs-*" de RutasConfig, salvo la del propio gateway.
+springdoc:
+  swagger-ui:
+    urls:
+      - name: api-gateway
+        url: /v3/api-docs
+      - name: user-service
+        url: /v3/api-docs/user-service
+      - name: ticket-service
+        url: /v3/api-docs/ticket-service
+      - name: classification-service
+        url: /v3/api-docs/classification-service
+      - name: notification-service
+        url: /v3/api-docs/notification-service
+      - name: reporting-service
+        url: /v3/api-docs/reporting-service

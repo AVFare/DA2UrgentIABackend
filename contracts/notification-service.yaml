@@ -1,0 +1,532 @@
+openapi: 3.1.0
+info:
+  title: notification-service
+  description: 'UrgentIA: consume eventos de tickets y registra notificaciones (email
+    simulado e internas).'
+  version: 0.1.0
+paths:
+  /health:
+    get:
+      tags:
+      - health
+      summary: Health
+      description: Indica que el servicio está levantado.
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutputHealth'
+  /api/eventos:
+    post:
+      tags:
+      - eventos
+      summary: Recibir Evento
+      description: 'Recibe un evento de ticket-service (solo red interna). Es idempotente
+        por eventId:
+
+        responde PROCESADO, DUPLICADO o IGNORADO.'
+      operationId: recibir_evento_api_eventos_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InputEvento'
+        required: true
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutputEventoRecibido'
+        '400':
+          description: El sobre no cumple el esquema
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutputError'
+  /api/notificaciones:
+    get:
+      tags:
+      - notificaciones
+      summary: Listar Notificaciones
+      description: Lista notificaciones, de la más nueva a la más vieja, filtrando
+        por ticket y/o destinatario.
+      operationId: listar_notificaciones_api_notificaciones_get
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          description: Página, desde 0
+          default: 0
+          title: Page
+        description: Página, desde 0
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          description: Tamaño de página (máximo 100)
+          default: 20
+          title: Size
+        description: Tamaño de página (máximo 100)
+      - name: ticketId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: Filtra por ticket
+          title: Ticketid
+        description: Filtra por ticket
+      - name: destinatario
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: GRUPO:GUARDIA o USUARIO:{uuid}
+          examples:
+          - GRUPO:GUARDIA
+          title: Destinatario
+        description: GRUPO:GUARDIA o USUARIO:{uuid}
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutputPagination_OutputNotificacion_'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutputError'
+          description: Bad Request
+  /api/notificaciones/{id}:
+    get:
+      tags:
+      - notificaciones
+      summary: Obtener Notificacion
+      description: Devuelve una notificación por id.
+      operationId: obtener_notificacion_api_notificaciones__id__get
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutputNotificacion'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutputError'
+          description: Not Found
+components:
+  schemas:
+    CanalNotificacion:
+      type: string
+      enum:
+      - EMAIL_SIMULADO
+      - INTERNA
+      title: CanalNotificacion
+    Categoria:
+      type: string
+      enum:
+      - INCIDENTE
+      - SOLICITUD
+      - CONSULTA
+      - BUG
+      title: Categoria
+    EstadoNotificacion:
+      type: string
+      enum:
+      - ENVIADA
+      - FALLIDA
+      title: EstadoNotificacion
+    EstadoTicket:
+      type: string
+      enum:
+      - NUEVO
+      - PENDIENTE_CLASIFICACION
+      - CLASIFICADO
+      - ASIGNADO
+      - EN_CURSO
+      - ESCALADO
+      - RESUELTO
+      - CERRADO
+      title: EstadoTicket
+    InputEvento:
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          title: Eventid
+        eventType:
+          $ref: '#/components/schemas/TipoEvento'
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+        occurredAt:
+          type: string
+          format: date-time
+          title: Occurredat
+        correlationId:
+          type: string
+          minLength: 1
+          title: Correlationid
+        source:
+          type: string
+          minLength: 1
+          title: Source
+        payload:
+          $ref: '#/components/schemas/InputPayload'
+      type: object
+      required:
+      - eventId
+      - eventType
+      - version
+      - occurredAt
+      - correlationId
+      - source
+      - payload
+      title: InputEvento
+      description: Sobre del evento. Un eventType fuera del enum responde 400, como
+        pide el contrato.
+      examples:
+      - correlationId: a8e1b2c3-0000-4000-8000-000000000001
+        eventId: 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+        eventType: TicketEscalado
+        occurredAt: '2026-10-05T14:03:12Z'
+        payload:
+          estadoAnterior: CLASIFICADO
+          motivo: Prioridad P1
+          ticket:
+            categoria: INCIDENTE
+            estado: ESCALADO
+            fechaCreacion: '2026-10-05T14:03:10Z'
+            fechaLimiteSla: '2026-10-05T15:03:11Z'
+            moduloAfectado: AUTENTICACION
+            prioridad: P1
+            solicitanteId: b1c2d3e4-0000-4000-8000-000000000004
+            ticketId: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+            titulo: No puede ingresar nadie
+        source: ticket-service
+        version: 1
+    InputPayload:
+      properties:
+        ticket:
+          $ref: '#/components/schemas/InputTicket'
+        estadoAnterior:
+          anyOf:
+          - $ref: '#/components/schemas/EstadoTicket'
+          - type: 'null'
+        motivo:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Motivo
+      type: object
+      required:
+      - ticket
+      title: InputPayload
+    InputTicket:
+      properties:
+        ticketId:
+          type: string
+          format: uuid
+          title: Ticketid
+        titulo:
+          type: string
+          maxLength: 120
+          minLength: 5
+          title: Titulo
+        estado:
+          $ref: '#/components/schemas/EstadoTicket'
+        prioridad:
+          anyOf:
+          - $ref: '#/components/schemas/Prioridad'
+          - type: 'null'
+        categoria:
+          anyOf:
+          - $ref: '#/components/schemas/Categoria'
+          - type: 'null'
+        moduloAfectado:
+          anyOf:
+          - $ref: '#/components/schemas/ModuloAfectado'
+          - type: 'null'
+        solicitanteId:
+          type: string
+          format: uuid
+          title: Solicitanteid
+        agenteAsignadoId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Agenteasignadoid
+        fechaCreacion:
+          type: string
+          format: date-time
+          title: Fechacreacion
+        fechaLimiteSla:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Fechalimitesla
+      type: object
+      required:
+      - ticketId
+      - titulo
+      - estado
+      - solicitanteId
+      - fechaCreacion
+      title: InputTicket
+      description: Foto del ticket despues del cambio. No trae la descripcion.
+    ModuloAfectado:
+      type: string
+      enum:
+      - AUTENTICACION
+      - FACTURACION
+      - PAGOS
+      - REPORTES
+      - INFRAESTRUCTURA
+      - BASE_DE_DATOS
+      - INTEGRACIONES
+      - OTRO
+      title: ModuloAfectado
+    OutputDetalleError:
+      properties:
+        campo:
+          type: string
+          title: Campo
+          examples:
+          - payload.ticket.titulo
+        mensaje:
+          type: string
+          title: Mensaje
+          examples:
+          - Field required
+      type: object
+      required:
+      - campo
+      - mensaje
+      title: OutputDetalleError
+    OutputError:
+      properties:
+        codigo:
+          type: string
+          title: Codigo
+          examples:
+          - VALIDACION
+        mensaje:
+          type: string
+          title: Mensaje
+          examples:
+          - La solicitud no es válida
+        detalles:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/OutputDetalleError'
+            type: array
+          - type: 'null'
+          title: Detalles
+        timestamp:
+          type: string
+          title: Timestamp
+          examples:
+          - '2026-10-05T14:03:11Z'
+        path:
+          type: string
+          title: Path
+          examples:
+          - /api/eventos
+        correlationId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Correlationid
+          examples:
+          - a8e1b2c3-0000-4000-8000-000000000001
+      type: object
+      required:
+      - codigo
+      - mensaje
+      - timestamp
+      - path
+      title: OutputError
+    OutputEventoRecibido:
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          title: Eventid
+          examples:
+          - 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+        resultado:
+          $ref: '#/components/schemas/ResultadoEvento'
+      type: object
+      required:
+      - eventId
+      - resultado
+      title: OutputEventoRecibido
+    OutputHealth:
+      properties:
+        status:
+          type: string
+          title: Status
+          examples:
+          - UP
+        service:
+          type: string
+          title: Service
+          examples:
+          - notification-service
+        version:
+          type: string
+          title: Version
+          examples:
+          - 0.1.0
+      type: object
+      required:
+      - status
+      - service
+      - version
+      title: OutputHealth
+    OutputNotificacion:
+      properties:
+        id:
+          type: string
+          title: Id
+          examples:
+          - 66f7c3b2e4b0a1b2c3d4e5f7
+        eventId:
+          type: string
+          title: Eventid
+          examples:
+          - 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+        ticketId:
+          type: string
+          title: Ticketid
+          examples:
+          - 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        tipoEvento:
+          $ref: '#/components/schemas/TipoEvento'
+        destinatario:
+          type: string
+          title: Destinatario
+          examples:
+          - GRUPO:GUARDIA
+        canal:
+          $ref: '#/components/schemas/CanalNotificacion'
+        asunto:
+          type: string
+          title: Asunto
+          examples:
+          - '[P1] Ticket escalado: No puede ingresar nadie'
+        mensaje:
+          type: string
+          title: Mensaje
+          examples:
+          - 'El ticket fue escalado. Motivo: Prioridad P1. SLA: 2026-10-05T15:03:11Z'
+        estado:
+          $ref: '#/components/schemas/EstadoNotificacion'
+        fecha:
+          type: string
+          title: Fecha
+          examples:
+          - '2026-10-05T14:03:12Z'
+      type: object
+      required:
+      - id
+      - eventId
+      - ticketId
+      - tipoEvento
+      - destinatario
+      - canal
+      - asunto
+      - mensaje
+      - estado
+      - fecha
+      title: OutputNotificacion
+    OutputPagination_OutputNotificacion_:
+      properties:
+        content:
+          items:
+            $ref: '#/components/schemas/OutputNotificacion'
+          type: array
+          title: Content
+        page:
+          type: integer
+          title: Page
+          examples:
+          - 0
+        size:
+          type: integer
+          title: Size
+          examples:
+          - 20
+        totalElements:
+          type: integer
+          title: Totalelements
+          examples:
+          - 1
+        totalPages:
+          type: integer
+          title: Totalpages
+          examples:
+          - 1
+      type: object
+      required:
+      - content
+      - page
+      - size
+      - totalElements
+      - totalPages
+      title: OutputPagination[OutputNotificacion]
+    Prioridad:
+      type: string
+      enum:
+      - P1
+      - P2
+      - P3
+      - P4
+      title: Prioridad
+    ResultadoEvento:
+      type: string
+      enum:
+      - PROCESADO
+      - DUPLICADO
+      - IGNORADO
+      title: ResultadoEvento
+    TipoEvento:
+      type: string
+      enum:
+      - TicketCreado
+      - TicketClasificado
+      - TicketEscalado
+      - TicketAsignado
+      - TicketEstadoCambiado
+      - TicketResuelto
+      title: TipoEvento

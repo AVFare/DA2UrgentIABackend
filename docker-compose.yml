@@ -11,7 +11,9 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      # Con -h pregunta por red. Mientras corre init.sql, Postgres escucha solo por
+      # socket local, asi que recien da "sano" cuando las bases ya estan creadas.
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1"]
       interval: 5s
       retries: 10
     networks: [urgentia-net]
@@ -30,9 +32,105 @@ services:
       - mongodata:/data/db
       - ./infra/mongo/init.js:/docker-entrypoint-initdb.d/init.js:ro
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      # Pregunta por el nombre del contenedor y no por localhost. Mientras corre
+      # init.js, Mongo escucha solo en localhost, asi que recien da "sano" cuando
+      # los usuarios ya estan creados.
+      test: ["CMD-SHELL", "mongosh --quiet --host $$(hostname) --eval \"db.adminCommand('ping')\""]
       interval: 5s
       retries: 10
+    networks: [urgentia-net]
+
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      USER_SERVICE_URL: http://user-service:8083
+      TICKET_SERVICE_URL: http://ticket-service:8081
+      CLASSIFICATION_SERVICE_URL: http://classification-service:8082
+      NOTIFICATION_SERVICE_URL: http://notification-service:8084
+      REPORTING_SERVICE_URL: http://reporting-service:8085
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 5s
+      retries: 20
+    networks: [urgentia-net]
+
+  user-service:
+    build: ./user-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/users_db
+      DB_USER: users_user
+      DB_PASSWORD: ${USERS_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES:-60}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8083/health"]
+      interval: 5s
+      retries: 20
+    networks: [urgentia-net]
+
+  ticket-service:
+    build: ./ticket-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/tickets_db
+      DB_USER: tickets_user
+      DB_PASSWORD: ${TICKETS_DB_PASSWORD}
+      CLASSIFICATION_URL: http://classification-service:8082
+      CLASSIFICATION_TIMEOUT_MS: ${CLASSIFICATION_TIMEOUT_MS:-7000}
+      EVENT_SUBSCRIBERS: http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/health"]
+      interval: 5s
+      retries: 20
+    networks: [urgentia-net]
+
+  classification-service:
+    build: ./classification-service
+    environment:
+      MONGO_URI: mongodb://classification_user:${CLASSIFICATION_DB_PASSWORD}@mongo:27017/classification_db
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-5000}
+      PROMPT_VERSION: ${PROMPT_VERSION:-full}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    # Para LLM_PROVIDER=ollama: llega al Ollama instalado en la maquina (en Linux no existe por defecto).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      # La imagen python:3.12-slim no trae curl.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8082/health', timeout=2)"]
+      interval: 5s
+      retries: 20
+    networks: [urgentia-net]
+
+  notification-service:
+    build: ./notification-service
+    environment:
+      MONGO_URI: mongodb://notifications_user:${NOTIFICATIONS_DB_PASSWORD}@mongo:27017/notifications_db
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      # La imagen python:3.12-slim no trae curl.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8084/health', timeout=2)"]
+      interval: 5s
+      retries: 20
     networks: [urgentia-net]
 
 volumes:

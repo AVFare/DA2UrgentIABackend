@@ -1,8 +1,30 @@
-# CONTEXTO_PROYECTO.md — TriageDesk
+# CONTEXTO_PROYECTO.md — UrgentIA
 
-> **Fuente única de verdad** del proyecto TriageDesk (TP de Desarrollo de Aplicaciones II, UADE).
+> **Fuente única de verdad** del proyecto UrgentIA (TP de Desarrollo de Aplicaciones II, UADE).
 > Todo el equipo (y sus asistentes de IA) trabaja a partir de este archivo.
-> Versión: 1.0 · Fecha: 28/09/2026 · Alcance: Defensa 1 (con la parte 2 ya contemplada).
+> Versión: 1.4 · Fecha: 06/10/2026 · Alcance: Defensa 1 (con la parte 2 ya contemplada).
+
+**Cambios de la versión 1.4**
+
+- notification-service pasa de Node 20 + NestJS a **Python 3.12 + FastAPI** (secciones 2, 3, 4, 4.1, 11.1 y 15). Los contratos no cambian. Su OpenAPI está en `/openapi.json` y el gateway lo pide ahí.
+
+**Cambios de la versión 1.3**
+
+- classification-service: hay dos prompts, `full` (default, `PROMPT_VERSION=full`), que precisa cuándo el impacto es ALTO y cuándo no se escala, y `lite`, para modelos locales chicos (sección 12.2).
+- Set de evaluación completo (20 casos) y resultados de RIA01 por proveedor y modelo (sección 12.3).
+- Groq: modelo por defecto `qwen/qwen3.8-27b` (sección 12.1).
+
+**Cambios de la versión 1.2**
+
+- classification-service: la interfaz `LlmProvider` y la del repositorio pasan a `application/ports/` (un archivo por puerto), para que la capa de aplicación no dependa de infraestructura. Los adapters de LLM van uno por contrato de API (sección 4.1).
+- Proveedores de LLM definidos: `mock`, `ollama` y `groq` (sección 12.1). Se suma la variable opcional `LLM_BASE_URL` (sección 14).
+- `GET /api/clasificaciones`: `ticketId` pasa a ser un filtro opcional y la respuesta va paginada (sección 9.3).
+
+**Cambios de la versión 1.1**
+
+- El proyecto se llama **UrgentIA**. Cambian con el nombre: los paquetes Java (`com.urgentia.*`), la red de Compose (`urgentia-net`), los mails de los usuarios semilla (`@urgentia.local`) y el emisor del JWT (`urgentia-user-service`).
+- Spring Boot queda fijado en la línea 3.5 (sección 3).
+- Se actualizan a lo que ya está en el repo: estructura (sección 4), detalles del JWT y rutas públicas (sección 6), Compose y cómo correr (sección 14) y flujo de Git (sección 16).
 
 ---
 
@@ -19,12 +41,13 @@ Si sos una IA ayudando a un integrante del equipo:
 7. **Nunca pongas secretos en el código** (API keys, contraseñas, `JWT_SECRET`). Siempre por variable de entorno.
 8. **Mensajes de commit** en español con Conventional Commits: `feat(ticket): ...`, `fix(gateway): ...`, `test(ia): ...`, `docs: ...`.
 9. Si falta información para implementar algo, **preguntá** en vez de suponer. Si algo no está definido acá, proponé una opción y marcala como pendiente de acordar.
+10. **El proyecto se llama UrgentIA.** Si en tu contexto quedó otro nombre de una versión anterior de este archivo, no lo uses en paquetes, redes, mails ni textos.
 
 ---
 
 ## 1. Resumen del proyecto
 
-**TriageDesk** es una mesa de ayuda donde el solicitante carga un ticket en texto libre. Un LLM analiza el texto y estima **categoría, urgencia, impacto y módulo afectado**. El dominio calcula la **prioridad (P1–P4)** con una matriz fija y, si el caso es crítico, **escala** el ticket y **notifica** a la guardia.
+**UrgentIA** es una mesa de ayuda donde el solicitante carga un ticket en texto libre. Un LLM analiza el texto y estima **categoría, urgencia, impacto y módulo afectado**. El dominio calcula la **prioridad (P1–P4)** con una matriz fija y, si el caso es crítico, **escala** el ticket y **notifica** a la guardia.
 
 **Principio central:** la IA *sugiere*, el dominio *decide*. La IA nunca devuelve la prioridad.
 
@@ -38,7 +61,7 @@ Si sos una IA ayudando a un integrante del equipo:
 |---|---|---|
 | ADR-01 | Microservicios desde la primera entrega, uno por bounded context | La consigna final pide SOA/microservicios; evita reescribir |
 | ADR-02 | Base de datos propia por servicio (nunca se leen tablas ajenas) | Evitar el "monolito distribuido" |
-| ADR-03 | Stack políglota: Java (gateway, tickets, usuarios), Python (IA), Node (notificaciones, reportes) | Python es el ecosistema de IA; demuestra independencia tecnológica. Máximo 3 lenguajes |
+| ADR-03 | Stack políglota: Java (gateway, tickets, usuarios), Python (IA, notificaciones), Node (reportes) | Python es el ecosistema de IA; demuestra independencia tecnológica. Máximo 3 lenguajes |
 | ADR-04 | PostgreSQL para tickets y usuarios; MongoDB para clasificaciones, notificaciones y reportes | Relacional donde hay invariantes y transacciones; documentos donde la forma es flexible o es un read model |
 | ADR-05 | API Gateway como única entrada; valida JWT | Seguridad y documentación centralizadas |
 | ADR-06 | En la Defensa 1, clasificación por REST sincrónico con timeout y fallback | Simplicidad; en la parte 2 pasa a cola de mensajes |
@@ -54,26 +77,30 @@ Si sos una IA ayudando a un integrante del equipo:
 
 | Servicio | Puerto | Lenguaje / framework | Base de datos | Dueño | Responsabilidad |
 |---|---|---|---|---|---|
-| `api-gateway` | 8080 (único publicado) | Java 21, Spring Boot 3, Spring Cloud Gateway | — | P1 | Ruteo, validación JWT, autorización por rol, correlationId, Swagger agregado |
-| `ticket-service` | 8081 | Java 21, Spring Boot 3, Spring Data JPA | PostgreSQL `tickets_db` | P2 | **Core Domain**: tickets, prioridad, SLA, estados, escalamiento, publica eventos |
+| `api-gateway` | 8080 (único publicado) | Java 21, Spring Boot 3.5, Spring Cloud Gateway | — | P1 | Ruteo, validación JWT, autorización por rol, correlationId, Swagger agregado |
+| `ticket-service` | 8081 | Java 21, Spring Boot 3.5, Spring Data JPA | PostgreSQL `tickets_db` | P2 | **Core Domain**: tickets, prioridad, SLA, estados, escalamiento, publica eventos |
 | `classification-service` | 8082 | Python 3.12, FastAPI, Pydantic | MongoDB `classification_db` | P4 | Clasificación de texto con LLM (Model as a Service) |
-| `user-service` | 8083 | Java 21, Spring Boot 3, Spring Security | PostgreSQL `users_db` | P3 | Usuarios, roles, login y emisión de JWT |
-| `notification-service` | 8084 | Node 20, NestJS, TypeScript | MongoDB `notifications_db` | P5 | Consume eventos y registra/envía notificaciones (email simulado) |
+| `user-service` | 8083 | Java 21, Spring Boot 3.5, Spring Security | PostgreSQL `users_db` | P3 | Usuarios, roles, login y emisión de JWT |
+| `notification-service` | 8084 | Python 3.12, FastAPI, Pydantic | MongoDB `notifications_db` | P5 | Consume eventos y registra/envía notificaciones (email simulado) |
 | `reporting-service` | 8085 | Node 20, NestJS, TypeScript | MongoDB `reporting_db` | P6 | Lado de lectura (CQRS): proyecta eventos y expone reportes y SLA |
 
 Infraestructura en Compose: `postgres` (postgres:16, puerto 5432) y `mongo` (mongo:7, puerto 27017).
 Nombres DNS internos = nombre del servicio en Compose (ej.: `http://ticket-service:8081`).
+En desarrollo, `postgres` y `mongo` publican su puerto solo en `127.0.0.1`, para poder usarlos desde el IDE.
+
+**Versión de Spring Boot (servicios Java):** 3.5.16, con Spring Cloud 2025.0.3 donde haga falta. start.spring.io ya no ofrece Spring Boot 3: generar el proyecto ahí y reemplazar el bloque `<parent>` por el de `api-gateway/pom.xml`. No usar Spring Boot 4.
 
 ---
 
 ## 4. Estructura del repositorio
 
 ```
-triagedesk/
+DA2UrgentIABackend/
 ├── README.md
 ├── CONTEXTO_PROYECTO.md          ← este archivo
 ├── docker-compose.yml
 ├── .env.example                  ← se copia a .env (el .env NO se commitea)
+├── .github/workflows/ci.yml      ← CI: tests, imagen Docker y arranque del Compose
 ├── infra/
 │   ├── postgres/init.sql         ← crea users_db, tickets_db y sus usuarios
 │   └── mongo/init.js             ← crea usuarios de las 3 bases
@@ -91,13 +118,13 @@ triagedesk/
 ├── ticket-service/               (Maven)
 ├── user-service/                 (Maven)
 ├── classification-service/       (pip)
-├── notification-service/         (npm)
+├── notification-service/         (pip)
 └── reporting-service/            (npm)
 ```
 
 ### 4.1 Estructura interna por servicio
 
-**ticket-service (hexagonal)** — paquete base `com.triagedesk.ticket`
+**ticket-service (hexagonal)** — paquete base `com.urgentia.ticket`
 ```
 domain/
   model/        Ticket, TicketId, Clasificacion, Sla, EstadoTicket, Prioridad,
@@ -120,35 +147,42 @@ infrastructure/
   config/
 ```
 
-**user-service (capas simples)** — `com.triagedesk.user`: `controller/`, `service/`, `repository/`, `model/`, `dto/`, `security/` (JwtService, PasswordEncoder), `config/` (seed de datos).
+**user-service (capas simples)** — `com.urgentia.user`: `controller/`, `service/`, `repository/`, `model/`, `dto/`, `security/` (JwtService, PasswordEncoder), `config/` (seed de datos).
 
-**api-gateway** — `com.triagedesk.gateway`: `filter/` (CorrelationIdFilter, JwtAuthFilter, RoleAuthorizationFilter), `config/` (rutas, CORS, Swagger agregado).
+**api-gateway** — `com.urgentia.gateway`: `filter/` (CorrelationIdFilter, JwtAuthFilter, RoleAuthorizationFilter), `config/` (rutas, Swagger agregado, formato de logs), `error/` (formato común de error), `health/` (HealthController).
 
 **classification-service (Python)**
 ```
 app/
-  main.py
-  domain/         enums.py, models.py (Clasificacion)
-  application/    clasificacion_facade.py, masking.py
+  main.py, config.py (variables de entorno)
+  domain/         enums.py, models.py (Clasificacion y sus invariantes)
+  application/    ports/ (llm_provider.py, clasificacion_repository.py), clasificacion_facade.py, masking.py
   infrastructure/
-    api/          routes.py, errors.py, health.py
-    llm/          base.py (LlmProvider), mock_provider.py, <proveedor>_provider.py,
+    api/          routes/ (clasificaciones.py, health.py), schemas/ (DTOs Pydantic por tema:
+                  clasificacion.py, error.py, health.py, base.py), errors.py, correlation.py, openapi.py
+    llm/          mock_provider.py, openai_compatible_provider.py,
                   factory.py (LlmProviderFactory), response_parser.py (ACL)
     persistence/  clasificacion_repository.py (MongoDB)
-prompts/          clasificacion_v1.txt
+    logs.py       logs JSON con correlationId
+prompts/          clasificacion_full.txt, clasificacion_lite.txt
+scripts/          exportar_openapi.py (genera contracts/classification-service.yaml)
 tests/            data/tickets_eval.json, test_*.py
 ```
+Las dependencias apuntan hacia adentro (`infrastructure → application → domain`): `application/ports/` define las interfaces y los adapters de `infrastructure` las implementan. Los adapters de LLM van uno por contrato de API (sección 12.1).
 
-**notification-service (NestJS)**
+**notification-service (Python, FastAPI, capas simples)**
 ```
-src/
-  main.ts, app.module.ts
-  eventos/          eventos.controller.ts (POST /api/eventos), eventos.service.ts, dto/
-  notificaciones/   notificaciones.controller.ts, notificaciones.service.ts,
-                    schemas/, reglas/, plantillas/,
-                    canales/ (canal-notificacion.interface.ts, email-simulado.canal.ts, interna.canal.ts)
-  common/           filtro de errores, middleware de correlationId
-  health/
+app/
+  main.py, config.py (Settings), db.py, logging_config.py
+  middleware/       correlation.py (X-Correlation-Id)
+  schemas/          camel_model.py, enums.py, evento.py (sobre), notificacion.py, pagination.py, error.py, health.py
+  endpoints/        eventos.py (POST /api/eventos), notificaciones.py, health.py
+  services/         evento_service.py (reglas + idempotencia), notificacion_service.py,
+                    plantillas.py (Factory), canales.py (Strategy)
+  repositories/     mongo_repository.py (base), notificacion_repository.py, evento_procesado_repository.py
+  providers/        email_provider.py (email simulado = log estructurado)
+  exceptions/       api_exception.py, handlers.py (formato común de error)
+tests/              pytest con mongomock
 ```
 
 **reporting-service (NestJS)**
@@ -234,16 +268,19 @@ El gateway expone el Swagger unificado en `http://localhost:8080/swagger-ui.html
 
 - Emite: `user-service`. Valida: `api-gateway`.
 - Algoritmo **HS256** con `JWT_SECRET` (mínimo 32 caracteres), compartido por gateway y user-service.
+- La clave son los bytes UTF-8 de `JWT_SECRET`, tal cual (sin decodificar Base64).
+- Al firmar, indicar HS256 de forma explícita; no dejar que la librería elija el algoritmo según el largo de la clave.
+- El gateway lee los claims `sub` (lo propaga como `X-User-Id`) y `rol` (como `X-User-Rol`). Un token sin alguno de los dos se rechaza con 401.
 - Expiración: 60 minutos (`JWT_EXPIRATION_MINUTES`).
 - Claims:
 
 ```json
 {
   "sub": "b1c2d3e4-0000-4000-8000-000000000004",
-  "email": "solicitante@triagedesk.local",
+  "email": "solicitante@urgentia.local",
   "nombre": "Sofía Solicitante",
   "rol": "SOLICITANTE",
-  "iss": "triagedesk-user-service",
+  "iss": "urgentia-user-service",
   "iat": 1791300000,
   "exp": 1791303600
 }
@@ -254,7 +291,7 @@ El gateway expone el Swagger unificado en `http://localhost:8080/swagger-ui.html
 | Ruta | Método | Roles |
 |---|---|---|
 | `/api/auth/login` | POST | Público |
-| `/swagger-ui.html`, `/swagger-ui/**`, `/v3/api-docs/**`, `/docs/**`, `/health` | GET | Público |
+| `/swagger-ui.html`, `/swagger-ui/**`, `/webjars/**`, `/v3/api-docs/**`, `/docs/**`, `/health` | GET | Público |
 | `/api/usuarios` | POST | ADMIN |
 | `/api/usuarios/**` | GET | AGENTE, ADMIN |
 | `/api/tickets` | POST, GET | SOLICITANTE, AGENTE, ADMIN (un SOLICITANTE solo ve los suyos: lo filtra ticket-service con `X-User-Id`) |
@@ -265,15 +302,17 @@ El gateway expone el Swagger unificado en `http://localhost:8080/swagger-ui.html
 | `/api/reportes/**` | GET | AGENTE, ADMIN |
 | `/api/eventos` | — | **No se rutea.** Solo red interna |
 
+Lo que no figura en esta tabla se rechaza en el gateway: 401 sin token, 403 con token.
+
 ### 6.2 Usuarios semilla (user-service)
 
 | Email | Contraseña | Rol | Nota |
 |---|---|---|---|
-| `admin@triagedesk.local` | `Admin123!` | ADMIN | |
-| `guardia@triagedesk.local` | `Agente123!` | AGENTE | Equipo de guardia (recibe escalados) |
-| `soporte@triagedesk.local` | `Agente123!` | AGENTE | |
-| `solicitante@triagedesk.local` | `Usuario123!` | SOLICITANTE | Usado en la demo |
-| `solicitante2@triagedesk.local` | `Usuario123!` | SOLICITANTE | |
+| `admin@urgentia.local` | `Admin123!` | ADMIN | |
+| `guardia@urgentia.local` | `Agente123!` | AGENTE | Equipo de guardia (recibe escalados) |
+| `soporte@urgentia.local` | `Agente123!` | AGENTE | |
+| `solicitante@urgentia.local` | `Usuario123!` | SOLICITANTE | Usado en la demo |
+| `solicitante2@urgentia.local` | `Usuario123!` | SOLICITANTE | |
 
 Contraseñas solo para desarrollo; se guardan con BCrypt.
 
@@ -390,13 +429,13 @@ Todas las rutas de abajo son las **del servicio**; desde afuera se llaman igual 
 **`POST /api/auth/login`**
 ```json
 // request
-{ "email": "solicitante@triagedesk.local", "password": "Usuario123!" }
+{ "email": "solicitante@urgentia.local", "password": "Usuario123!" }
 // 200
 {
   "accessToken": "eyJhbGciOiJIUzI1NiJ9...",
   "tokenType": "Bearer",
   "expiresIn": 3600,
-  "usuario": { "id": "b1c2d3e4-...", "nombre": "Sofía Solicitante", "email": "solicitante@triagedesk.local", "rol": "SOLICITANTE" }
+  "usuario": { "id": "b1c2d3e4-...", "nombre": "Sofía Solicitante", "email": "solicitante@urgentia.local", "rol": "SOLICITANTE" }
 }
 // 401 CREDENCIALES_INVALIDAS
 ```
@@ -404,7 +443,7 @@ Todas las rutas de abajo son las **del servicio**; desde afuera se llaman igual 
 **`POST /api/usuarios`** (ADMIN)
 ```json
 // request
-{ "nombre": "Ana Agente", "email": "ana@triagedesk.local", "password": "Segura123!", "rol": "AGENTE" }
+{ "nombre": "Ana Agente", "email": "ana@urgentia.local", "password": "Segura123!", "rol": "AGENTE" }
 // 201 → Usuario
 // 409 EMAIL_DUPLICADO
 ```
@@ -414,7 +453,7 @@ Todas las rutas de abajo son las **del servicio**; desde afuera se llaman igual 
 
 `Usuario` (nunca incluye password ni hash):
 ```json
-{ "id": "uuid", "nombre": "Ana Agente", "email": "ana@triagedesk.local", "rol": "AGENTE", "activo": true, "fechaAlta": "2026-10-01T12:00:00Z" }
+{ "id": "uuid", "nombre": "Ana Agente", "email": "ana@urgentia.local", "rol": "AGENTE", "activo": true, "fechaAlta": "2026-10-01T12:00:00Z" }
 ```
 
 ### 9.2 ticket-service (8081)
@@ -496,14 +535,14 @@ Si está `PENDIENTE_CLASIFICACION`: `clasificacion`, `prioridad`, `fechaLimiteSl
   "justificacion": "Caída total del login en producción que afecta a todos los usuarios",
   "proveedor": "mock",
   "modelo": "mock-v1",
-  "versionPrompt": "v1",
+  "versionPrompt": "full",
   "latenciaMs": 812,
   "fecha": "2026-10-05T14:03:11Z"
 }
 // 400 VALIDACION | 502 LLM_RESPUESTA_INVALIDA | 504 LLM_TIMEOUT
 ```
 
-**`GET /api/clasificaciones?ticketId=<uuid>`** → lista (más reciente primero) de clasificaciones.
+**`GET /api/clasificaciones?ticketId=&page=0&size=20`** → página de clasificaciones (más reciente primero), con el formato de paginación de la sección 5. `ticketId` es un filtro opcional.
 
 **Flujo interno (`ClasificacionFacade`)**
 1. Validar request (Pydantic).
@@ -511,7 +550,7 @@ Si está `PENDIENTE_CLASIFICACION`: `clasificacion`, `prioridad`, `fechaLimiteSl
    - emails → `[EMAIL]`
    - teléfonos (secuencias de 8+ dígitos con espacios, guiones o `+`) → `[TELEFONO]`
    - DNI (7–8 dígitos, con o sin puntos) → `[DNI]`
-3. Armar el prompt desde `prompts/clasificacion_v{PROMPT_VERSION}.txt`.
+3. Armar el prompt desde `prompts/clasificacion_{PROMPT_VERSION}.txt`.
 4. Llamar a `LlmProvider` (elegido por `LlmProviderFactory` según `LLM_PROVIDER`) con timeout `LLM_TIMEOUT_MS` (5000).
 5. Parsear y validar (ACL, `response_parser.py`): JSON válido, enums dentro de las listas, `confianza` entre 0 y 1, `justificacion` ≤ 300 caracteres.
 6. Si la validación falla y quedan ≥ 2 s del presupuesto total (6 s), reintentar una vez; si no, 502.
@@ -683,7 +722,7 @@ flowchart TB
   C[Cliente: Swagger UI / Postman] -->|HTTPS + JWT| GW[api-gateway :8080]
   GW --> US[user-service :8083<br/>Java · PostgreSQL]
   GW --> TS[ticket-service :8081<br/>Java · PostgreSQL · CORE]
-  GW --> NS[notification-service :8084<br/>Node · MongoDB]
+  GW --> NS[notification-service :8084<br/>Python · MongoDB]
   GW --> RS[reporting-service :8085<br/>Node · MongoDB]
   TS -->|REST, timeout 7 s| CS[classification-service :8082<br/>Python · MongoDB]
   CS -->|HTTPS| LLM[(API de LLM externa)]
@@ -743,10 +782,15 @@ sequenceDiagram
 
 ### 12.1 Proveedores
 
-| `LLM_PROVIDER` | Descripción |
-|---|---|
-| `mock` | **Default.** Reglas por palabras clave, sin internet. Lo usan todos para desarrollar, los tests y el plan B de la demo |
-| `<real>` | Proveedor elegido por el equipo (pendiente). Lee `LLM_API_KEY` y `LLM_MODEL` |
+| `LLM_PROVIDER` | Adapter | URL base por defecto | API key | Descripción |
+|---|---|---|---|---|
+| `mock` | `MockLlmProvider` | — | No | **Default.** Reglas por palabras clave, sin internet. Lo usan todos para desarrollar, los tests, el CI y el plan B de la demo |
+| `ollama` | `OpenAICompatibleProvider` | `http://host.docker.internal:11434/v1` | No | Modelo local con [Ollama](https://ollama.com) instalado en la máquina. No sale nada a internet |
+| `groq` | `OpenAICompatibleProvider` | `https://api.groq.com/openai/v1` | Sí | API en internet con free tier. Cada integrante saca su key gratis en console.groq.com y la pone solo en su `.env` |
+
+- Ollama y Groq hablan el contrato de la API de OpenAI (`/chat/completions`), así que comparten adapter (Strategy por contrato). Sumar otro proveedor compatible es solo configuración: `LLM_BASE_URL` y `LLM_MODEL`.
+- `LLM_MODEL` elige el modelo de cada proveedor (por ejemplo, `qwen2.5:3b` en Ollama o `qwen/qwen3.8-27b` en Groq). `LLM_BASE_URL` pisa la URL por defecto.
+- Privacidad: el texto se enmascara antes de salir del servicio (sección 9.3), sea cual sea el proveedor.
 
 **Reglas del `MockLlmProvider`** (texto en minúsculas y sin tildes; se evalúan en orden):
 
@@ -762,7 +806,16 @@ sequenceDiagram
 Módulo por palabra clave: "login", "contrasena", "ingresar", "usuario" → AUTENTICACION · "factura" → FACTURACION · "pago", "tarjeta" → PAGOS · "reporte", "excel", "pdf" → REPORTES · "servidor", "disco", "red" → INFRAESTRUCTURA · "base de datos", "consultas" → BASE_DE_DATOS · "banco", "sincronizacion", "integracion" → INTEGRACIONES · otro → OTRO.
 `confianza` = 0.7, `proveedor` = `"mock"`, `modelo` = `"mock-v1"`. La justificación dice qué regla aplicó.
 
-### 12.2 Prompt v1 (`prompts/clasificacion_v1.txt`)
+### 12.2 Prompts (`prompts/clasificacion_{PROMPT_VERSION}.txt`)
+
+| Versión | Uso |
+|---|---|
+| `full` | **Default.** Mejor resultado con el proveedor real (sección 12.3) |
+| `lite` | Para modelos locales chicos (por ejemplo, `qwen2.5:1.5b` en CPU): prompt más corto, responde más rápido |
+
+`full` parte de `lite` y cambia tres cosas: el impacto ALTO es solo si afecta a toda la empresa, a todos los usuarios o a todos los clientes; dice explícitamente qué no se escala (un área, una sucursal, un grupo de usuarios o un riesgo a futuro); y suma un ejemplo de incidente de un área que no se escala.
+
+Prompt `full` (`prompts/clasificacion_full.txt`):
 
 ```text
 Sos un analista de mesa de ayuda de una empresa de software. Tu tarea es clasificar
@@ -785,15 +838,22 @@ Criterios:
 - INCIDENTE: algo que funcionaba dejó de funcionar. BUG: comportamiento incorrecto puntual.
   SOLICITUD: pedido de algo nuevo (alta, permiso, cambio). CONSULTA: pregunta de uso.
 - Urgencia ALTA: impide trabajar ahora. MEDIA: molesta pero hay alternativa. BAJA: puede esperar.
-- Impacto ALTO: producción caída, toda la empresa o todos los usuarios. MEDIO: un área o varios
-  usuarios. BAJO: un solo usuario.
-- requiereEscalamiento = true SOLO si hay caída de producción, todos o muchos usuarios bloqueados,
-  pérdida de datos o riesgo de seguridad.
+- Impacto ALTO: SOLO si afecta a toda la empresa, a todos los usuarios o a todos los clientes
+  (por ejemplo, producción caída). MEDIO: un área, una sucursal, un equipo o varios usuarios,
+  aunque no puedan trabajar. BAJO: un solo usuario o un caso puntual.
+- requiereEscalamiento = true SOLO si ocurre ahora alguna de estas situaciones: producción caída
+  o todos los usuarios o clientes bloqueados, pérdida de datos, o riesgo de seguridad (accesos
+  indebidos, cuentas comprometidas).
+- requiereEscalamiento = false si el problema afecta a un área, una sucursal o un grupo de
+  usuarios, o si es un riesgo a futuro que todavía no ocurrió.
 - Los datos marcados como [EMAIL], [TELEFONO] o [DNI] fueron ocultados a propósito; ignoralos.
 
 Ejemplos:
 Ticket: "Producción caída" - "Nadie puede entrar al sistema desde las 9"
 {"categoria":"INCIDENTE","urgencia":"ALTA","impacto":"ALTO","moduloAfectado":"AUTENTICACION","requiereEscalamiento":true,"confianza":0.95,"justificacion":"Caída total del acceso que afecta a todos los usuarios"}
+
+Ticket: "Correo caído en compras" - "El equipo de compras no recibe mails desde hace una hora y no puede trabajar"
+{"categoria":"INCIDENTE","urgencia":"ALTA","impacto":"MEDIO","moduloAfectado":"INFRAESTRUCTURA","requiereEscalamiento":false,"confianza":0.85,"justificacion":"Falla que impide trabajar a un área; no afecta a toda la empresa"}
 
 Ticket: "Exportar a Excel" - "¿Cómo exporto el reporte mensual a Excel?"
 {"categoria":"CONSULTA","urgencia":"BAJA","impacto":"BAJO","moduloAfectado":"REPORTES","requiereEscalamiento":false,"confianza":0.9,"justificacion":"Pregunta de uso sobre exportación de reportes"}
@@ -809,7 +869,7 @@ Título: {titulo}
 Descripción: {descripcion}
 ```
 
-### 12.3 Set de evaluación base (`tests/data/tickets_eval.json`, completar hasta 20)
+### 12.3 Set de evaluación (`tests/data/tickets_eval.json`, 20 casos)
 
 | # | Título | Descripción | categoria | urgencia | impacto | módulo | escalar | Prioridad esperada |
 |---|---|---|---|---|---|---|---|---|
@@ -823,8 +883,31 @@ Descripción: {descripcion}
 | 8 | Integración con el banco | La sincronización nocturna con el banco no corrió anoche; hoy hay que conciliar a mano | INCIDENTE | MEDIA | MEDIO | INTEGRACIONES | no | P3 |
 | 9 | Botón de reporte no anda | El botón "Descargar PDF" del reporte de stock no hace nada en Firefox | BUG | BAJA | BAJO | REPORTES | no | P4 |
 | 10 | Servidor sin espacio | El servidor de archivos está al 98% de disco y se va a llenar hoy | INCIDENTE | ALTA | MEDIO | INFRAESTRUCTURA | no | P2 |
+| 11 | Posible acceso indebido | Varios usuarios reportan que alguien les cambió la contraseña sin pedirlo y hay inicios de sesión desde otro país | INCIDENTE | ALTA | ALTO | AUTENTICACION | sí | P1 |
+| 12 | Desaparecieron las facturas | Después de la actualización de anoche se borraron todas las facturas de octubre; perdimos los datos | INCIDENTE | ALTA | ALTO | FACTURACION | sí | P1 |
+| 13 | Acceso a reportes de ventas | Solicito permiso para ver los reportes de ventas con mi usuario | SOLICITUD | BAJA | BAJO | REPORTES | no | P4 |
+| 14 | Cambiar mi contraseña | ¿Dónde puedo cambiar mi contraseña desde mi perfil? | CONSULTA | BAJA | BAJO | AUTENTICACION | no | P4 |
+| 15 | Rechazan todos los pagos | Desde las 14 ningún cliente puede pagar con tarjeta en producción, todos los pagos salen rechazados | INCIDENTE | ALTA | ALTO | PAGOS | sí | P1 |
+| 16 | Fecha mal en el PDF | En el reporte de stock exportado a PDF la fecha del encabezado aparece en formato inglés | BUG | BAJA | BAJO | REPORTES | no | P4 |
+| 17 | Servidor de pruebas | Necesitamos un servidor de pruebas para el equipo de desarrollo para el mes que viene | SOLICITUD | BAJA | MEDIO | INFRAESTRUCTURA | no | P4 |
+| 18 | Descuentos mal calculados | El total de las facturas no descuenta la bonificación por volumen; pasa con todas las facturas del área comercial | BUG | MEDIA | MEDIO | FACTURACION | no | P3 |
+| 19 | Frecuencia de sincronización | ¿Cada cuánto se sincronizan los movimientos del banco con el sistema? | CONSULTA | BAJA | BAJO | INTEGRACIONES | no | P4 |
+| 20 | Sucursal sin red | La sucursal Rosario no tiene conexión a la red desde hace una hora y el equipo de ventas de esa oficina no puede trabajar | INCIDENTE | ALTA | MEDIO | INFRAESTRUCTURA | no | P2 |
 
 **Criterio de aceptación (RIA01):** ≥ 80% de acierto en `categoria` y ≥ 90% en `requiereEscalamiento` sobre los 20 casos, con el proveedor real.
+
+**Resultados** (`python -m scripts.evaluar`, que guarda el detalle en `classification-service/tests/data/resultados/`, fuera del repo):
+
+| Proveedor / modelo | Prompt | categoria | requiereEscalamiento | prioridad | Latencia mediana | RIA01 |
+|---|---|---|---|---|---|---|
+| Ollama `qwen2.5:1.5b` (local, CPU) | lite | 80% | 80% | 75% | 3,7 s | no |
+| Ollama `qwen2.5:1.5b` (local, CPU) | full | 80% | 85% | 75% | 4,7 s | no |
+| Groq `openai/gpt-oss-20b` | lite | 100% | 80% | 70% | 0,7 s | no |
+| Groq `openai/gpt-oss-120b` | lite | 100% | 85% | 80% | 1,2 s | no |
+| Groq `qwen/qwen3.8-27b` | lite | 100% | 95% | 85% | 0,6 s | sí |
+| **Groq `qwen/qwen3.8-27b`** | **full** | **100%** | **100%** | **95%** | **0,6 s** | **sí** |
+
+Los errores de escalamiento de los modelos chicos son todos de más (escalan casos de un área); ningún modelo dejó sin escalar un caso crítico.
 **Caso de privacidad (test de `masking.py`):** "Soy Juan, mi mail es juan.perez@empresa.com y mi celular 11-5555-1234, DNI 30.123.456" → no debe quedar ningún dato original en el texto enviado ni en Mongo.
 
 ---
@@ -868,8 +951,9 @@ REPORTING_DB_PASSWORD=reporting_pass
 LLM_PROVIDER=mock
 LLM_API_KEY=
 LLM_MODEL=
+LLM_BASE_URL=
 LLM_TIMEOUT_MS=5000
-PROMPT_VERSION=v1
+PROMPT_VERSION=full
 
 # Integración
 CLASSIFICATION_TIMEOUT_MS=7000
@@ -883,11 +967,13 @@ LOG_LEVEL=INFO
 | api-gateway | `JWT_SECRET`, `USER_SERVICE_URL=http://user-service:8083`, `TICKET_SERVICE_URL=http://ticket-service:8081`, `CLASSIFICATION_SERVICE_URL=http://classification-service:8082`, `NOTIFICATION_SERVICE_URL=http://notification-service:8084`, `REPORTING_SERVICE_URL=http://reporting-service:8085` |
 | user-service | `DB_URL=jdbc:postgresql://postgres:5432/users_db`, `DB_USER=users_user`, `DB_PASSWORD`, `JWT_SECRET`, `JWT_EXPIRATION_MINUTES` |
 | ticket-service | `DB_URL=jdbc:postgresql://postgres:5432/tickets_db`, `DB_USER=tickets_user`, `DB_PASSWORD`, `CLASSIFICATION_URL=http://classification-service:8082`, `CLASSIFICATION_TIMEOUT_MS`, `EVENT_SUBSCRIBERS=http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos` |
-| classification-service | `MONGO_URI=mongodb://classification_user:<pass>@mongo:27017/classification_db`, `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TIMEOUT_MS`, `PROMPT_VERSION` |
+| classification-service | `MONGO_URI=mongodb://classification_user:<pass>@mongo:27017/classification_db`, `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LLM_TIMEOUT_MS`, `PROMPT_VERSION` |
 | notification-service | `MONGO_URI=mongodb://notifications_user:<pass>@mongo:27017/notifications_db` |
 | reporting-service | `MONGO_URI=mongodb://reporting_user:<pass>@mongo:27017/reporting_db` |
 
-### 14.3 Esqueleto de `docker-compose.yml` (lo completa P1)
+### 14.3 `docker-compose.yml`
+
+`postgres`, `mongo` y `api-gateway` ya están en el archivo del repo, que es el que vale. Cada dueño suma la entrada de su servicio siguiendo el ejemplo de `ticket-service`.
 
 ```yaml
 services:
@@ -895,36 +981,56 @@ services:
     image: postgres:16
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      USERS_DB_PASSWORD: ${USERS_DB_PASSWORD}
+      TICKETS_DB_PASSWORD: ${TICKETS_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1"]
       interval: 5s
       retries: 10
-    networks: [triagedesk-net]
+    networks: [urgentia-net]
 
   mongo:
     image: mongo:7
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      CLASSIFICATION_DB_PASSWORD: ${CLASSIFICATION_DB_PASSWORD}
+      NOTIFICATIONS_DB_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD}
+      REPORTING_DB_PASSWORD: ${REPORTING_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongodata:/data/db
       - ./infra/mongo/init.js:/docker-entrypoint-initdb.d/init.js:ro
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD-SHELL", "mongosh --quiet --host $$(hostname) --eval \"db.adminCommand('ping')\""]
       interval: 5s
       retries: 10
-    networks: [triagedesk-net]
+    networks: [urgentia-net]
 
   api-gateway:
     build: ./api-gateway
-    ports: ["8080:8080"]
-    env_file: .env
-    depends_on: [user-service, ticket-service, classification-service, notification-service, reporting-service]
-    networks: [triagedesk-net]
+    ports:
+      - "8080:8080"
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      USER_SERVICE_URL: http://user-service:8083
+      TICKET_SERVICE_URL: http://ticket-service:8081
+      CLASSIFICATION_SERVICE_URL: http://classification-service:8082
+      NOTIFICATION_SERVICE_URL: http://notification-service:8084
+      REPORTING_SERVICE_URL: http://reporting-service:8085
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 5s
+      retries: 20
+    networks: [urgentia-net]
 
+  # Ejemplo para sumar un servicio (todavía no está en el archivo del repo):
   ticket-service:
     build: ./ticket-service
     env_file: .env
@@ -936,7 +1042,7 @@ services:
       EVENT_SUBSCRIBERS: http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos
     depends_on:
       postgres: { condition: service_healthy }
-    networks: [triagedesk-net]
+    networks: [urgentia-net]
 
   # user-service, classification-service, notification-service y reporting-service: mismo patrón
 
@@ -945,8 +1051,10 @@ volumes:
   mongodata:
 
 networks:
-  triagedesk-net:
+  urgentia-net:
 ```
+
+Cada servicio suma también su `healthcheck` contra `GET /health`: el CI levanta todo el Compose y espera a que esté sano.
 
 Imágenes base sugeridas: `eclipse-temurin:21-jre` (Java, build multi-stage con `maven:3.9-eclipse-temurin-21`), `python:3.12-slim`, `node:20-alpine`.
 
@@ -954,8 +1062,9 @@ Imágenes base sugeridas: `eclipse-temurin:21-jre` (Java, build multi-stage con 
 
 ```bash
 cp .env.example .env
-docker compose up --build
+docker compose up -d --build --wait
 # Swagger unificado: http://localhost:8080/swagger-ui.html
+# Estado del gateway:  http://localhost:8080/health
 ```
 
 ---
@@ -969,7 +1078,7 @@ docker compose up --build
 | ticket-service | Dominio (transiciones, matriz 9 casos, escalamiento, invariantes) sin Spring; integración de repositorio y del caso "IA caída" | JUnit 5, AssertJ, Testcontainers/H2, WireMock |
 | user-service | Login OK/incorrecto, JWT generado, email duplicado | JUnit 5, Spring Boot Test |
 | classification-service | Enmascarado, parser/validación, mock provider, set de evaluación | pytest |
-| notification-service | Reglas por evento, plantillas, idempotencia | Jest |
+| notification-service | Reglas por evento, plantillas, idempotencia | pytest + mongomock |
 | reporting-service | Proyectores, cálculo de SLA vencido y cumplimiento | Jest |
 | api-gateway | Rutas públicas, JWT inválido → 401, rol insuficiente → 403 | Spring Boot Test |
 
@@ -987,8 +1096,11 @@ docker compose up --build
 
 ## 16. Flujo de trabajo con Git
 
-- `main` protegida; todo entra por Pull Request con 1 aprobación.
-- Ramas: `feat/<servicio>-<tema>`, `fix/...`, `docs/...`, `test/...`.
+- `main` está protegida. El trabajo de la entrega 1 se integra en `dev/entrega-1`: no se puede pushear directo, todo entra por Pull Request.
+- Ramas de tarea: `feat/<servicio>-<tema>`, `fix/...`, `chore/...`, `docs/...`, `test/...`. Salen de `dev/entrega-1` (o de la rama propia del servicio) y vuelven por PR.
+- Mergear con "Create a merge commit", sin squash: así se conservan los commits de cada integrante.
+- Cada PR y cada push a `main` o a ramas `dev/**` corre el CI (`.github/workflows/ci.yml`): tests de cada servicio, construcción de su imagen Docker y arranque del Compose completo.
+- Para la defensa, `dev/entrega-1` se lleva a `main` con merge commit.
 - Commits: Conventional Commits en español (`feat(ticket): agrega matriz de prioridad`).
 - Commits chicos y frecuentes: el docente revisa quién hizo qué.
 - Nunca commitear `.env`, API keys ni carpetas `target/`, `node_modules/`, `__pycache__/`.
@@ -1012,7 +1124,8 @@ docker compose up --build
 
 | Tema | Estado | Responsable |
 |---|---|---|
-| Proveedor de LLM real y quién aporta la API key | Pendiente | P4 propone el 30/9 |
+| Proveedor de LLM real y quién aporta la API key | Resuelto (v1.2): `ollama` local y `groq`; cada uno usa su propia key de Groq (sección 12.1) | P4 |
 | Fecha exacta de la Defensa 1 | Estimada 12/10 | Todos |
 | Confirmar lenguajes por integrante (Java/Python/Node) | Pendiente | Todos, 29/9 |
 | Nombres de integrantes por rol P1–P6 | Pendiente | Todos |
+| Swagger unificado: que cada servicio declare el esquema de seguridad `bearer` en su OpenAPI (para el botón Authorize) y que los Java usen `server.forward-headers-strategy=framework` (para que "Try it out" pase por el gateway) | A verificar con el primer servicio detrás del gateway | P1 con P2 y P3 |
