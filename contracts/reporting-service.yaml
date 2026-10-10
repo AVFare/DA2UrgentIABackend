@@ -1,18 +1,26 @@
 openapi: 3.0.3
 info:
-  title: TriageDesk reporting-service
+  title: UrgentIA reporting-service
   version: 0.1.0
   description:
     Contrato P6. Consulta mediante gateway (AGENTE o ADMIN); el gateway
     valida JWT. Eventos exclusivamente por red interna.
 servers:
-  - url: http://reporting-service:8085
+  - url: http://localhost:8080
+    description: "Gateway: consultas con JWT AGENTE/ADMIN"
+  - url: http://localhost:8085
+    description: Desarrollo local de P6
 paths:
   /api/eventos:
     post:
       tags:
         - Eventos
       summary: Proyectar un evento de ticket (solo red interna)
+      servers:
+        - url: http://reporting-service:8085
+          description: Red interna
+        - url: http://localhost:8085
+          description: Desarrollo local de P6
       description:
         Idempotencia por eventId. Los eventos antiguos se registran pero
         no sobrescriben ticket_view. Un fallo devuelve 500 y permite reintentar. No
@@ -47,6 +55,8 @@ paths:
       tags:
         - Reportes
       summary: Totales y distribuciones de tickets
+      security:
+        - bearer: []
       parameters:
         - name: X-Correlation-Id
           in: header
@@ -77,6 +87,8 @@ paths:
       tags:
         - Reportes
       summary: Tickets vencidos y cumplimiento por prioridad
+      security:
+        - bearer: []
       parameters:
         - name: X-Correlation-Id
           in: header
@@ -107,6 +119,8 @@ paths:
       tags:
         - Reportes
       summary: Vista de tickets filtrada y paginada
+      security:
+        - bearer: []
       parameters:
         - name: X-Correlation-Id
           in: header
@@ -188,6 +202,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorDto"
 components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
     TicketSnapshotDto:
       type: object
@@ -300,7 +319,10 @@ components:
           enum:
             - 1
         occurredAt: *id004
-        correlationId: *id003
+        correlationId:
+          type: string
+          minLength: 1
+          example: cid-eventos
         source:
           type: string
           enum:

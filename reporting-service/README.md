@@ -1,6 +1,6 @@
 # reporting-service · P6
 
-Servicio de lectura de TriageDesk. Recibe los seis eventos de `ticket-service`,
+Servicio de lectura de UrgentIA. Recibe los seis eventos de `ticket-service`,
 mantiene una vista en MongoDB y expone resumen, SLA y tickets. No calcula
 prioridades ni consulta bases de otros servicios.
 
@@ -59,11 +59,12 @@ Con variables ya exportadas podés usar `npm start` o `npm run start:dev`.
 `MONGO_URI` es obligatoria; la base acordada es `reporting_db`. `LOG_LEVEL`
 acepta `DEBUG`, `INFO`, `WARN` o `ERROR` y por defecto usa `INFO`.
 
-P1 debe incorporar el servicio al Compose compartido con `build: ./reporting-service`,
-`MONGO_URI=mongodb://reporting_user:<password>@mongo:27017/reporting_db` y la
-red `urgentia-net` que existe actualmente en el repositorio. La URL interna es
-`http://reporting-service:8085`. En ese despliegue solo el gateway publica el
-acceso externo; `/api/eventos` permanece exclusivamente en la red interna.
+El Compose raíz incluye P6 con su usuario `reporting_user`, base `reporting_db`,
+dependencia de MongoDB saludable y red `urgentia-net`. La URL interna es
+`http://reporting-service:8085`. El gateway publica las consultas y agrega su
+OpenAPI en `http://localhost:8080/swagger-ui.html`; `/api/eventos` queda interno.
+En Swagger, elegir el servidor del gateway y autorizar con un JWT de AGENTE/ADMIN.
+Para la demo exclusiva de P6, elegir el servidor `http://localhost:8085`.
 
 ## API
 
@@ -83,11 +84,13 @@ La respuesta nunca expone `_id`, el evento almacenado ni datos internos.
 El gateway valida JWT y limita reportes a AGENTE/ADMIN. Este servicio confía
 en la red interna, según el contrato del proyecto. Toda respuesta propaga
 `X-Correlation-Id`; si falta, genera uno. Los logs son JSON y el procesamiento
-del evento usa además su `correlationId`. Los errores siguen el formato común.
+del evento usa además su `correlationId`: acepta cualquier string no vacío,
+según el esquema compartido, sin exigir UUID. Los errores siguen el formato común.
 
 ## Proyecciones e idempotencia
 
-1. Valida UUID v4, fechas UTC, versión 1, enums y snapshot completo. Rechaza
+1. Valida UUID v4 en identificadores, correlación no vacía, fechas UTC, versión 1,
+   enums y snapshot completo. Rechaza
    campos extra (incluida `descripcion`). `estadoAnterior` es obligatorio en
    cambios de estado, escalados y resueltos; `motivo` lo es en escalados.
 2. Guarda el evento original como `PENDIENTE` en `eventos_procesados`, con un
@@ -152,6 +155,22 @@ para descargar MongoDB. `npm run verificar:demo` levanta el JavaScript compilado
 prueba la API, guarda respuestas reales en `docs/evidencias.json` y apaga ambos
 procesos. El puerto 8085 debe estar libre.
 
+El CI ejecuta las pruebas unitarias, las del verificador y las de integración
+HTTP de P6. El job Compose agrega una comprobación del flujo completo por el
+gateway. Con el Compose raíz levantado, `LLM_PROVIDER=mock` y usuarios semilla:
+
+```bash
+npm run verificar:integracion
+# Otro gateway de desarrollo:
+npm run verificar:integracion -- http://localhost:8080
+```
+
+Esta comprobación crea un ticket de prueba P1, verifica 401/403 para reportes,
+la definición JWT en Swagger, la notificación a guardia y la vista escalada
+de ese mismo ticket. Espera hasta 60 segundos por la entrega asincrónica y
+mantiene un identificador de correlación libre. Usar una base de desarrollo
+limpia: la consulta inspecciona los primeros 100 tickets P1 escalados.
+
 ## Documentación y defensa
 
 - [Contrato OpenAPI](../contracts/reporting-service.yaml).
@@ -171,4 +190,4 @@ python3 scripts/exportar-defensa.py
 El material incluye los nombres proporcionados por Francisco. Las asignaciones
 de los demás integrantes, su revisión y el informe final del equipo siguen
 pendientes de confirmación. El esquema de eventos compartido pertenece a P2/P5;
-P6 aporta [su propuesta local](docs/eventos-consumidos.schema.json) sin modificarlo.
+P6 documenta [su validación local](docs/eventos-consumidos.schema.json) sin modificarlo.

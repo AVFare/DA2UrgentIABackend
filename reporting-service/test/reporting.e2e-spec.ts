@@ -59,6 +59,38 @@ describe('reporting-service HTTP + MongoDB standalone', () => {
   const listar = () =>
     request(app.getHttpServer()).get('/api/reportes/tickets').expect(200);
 
+  it('acepta la correlacion libre de P2 y conserva la idempotencia', async () => {
+    const evento = eventoEjemplo({ correlationId: 'cid-eventos' });
+    const procesado = await request(app.getHttpServer())
+      .post('/api/eventos')
+      .set('X-Correlation-Id', evento.correlationId)
+      .send(evento)
+      .expect(202);
+    expect(procesado.headers['x-correlation-id']).toBe('cid-eventos');
+    expect(procesado.body.resultado).toBe('PROCESADO');
+    expect((await enviar(evento)).body.resultado).toBe('DUPLICADO');
+    const guardado = await conexion.collection('eventos_procesados').findOne({
+      eventId: evento.eventId,
+    });
+    expect(guardado?.evento.correlationId).toBe('cid-eventos');
+    expect((await listar()).body.content[0].ticketId).toBe(
+      evento.payload.ticket.ticketId,
+    );
+  });
+
+  it.each(['', null, 123, undefined])(
+    'rechaza correlaciones vacias o de tipo incorrecto: %p',
+    async (correlationId) => {
+      await request(app.getHttpServer())
+        .post('/api/eventos')
+        .send({ ...eventoEjemplo(), correlationId })
+        .expect(400);
+      expect(
+        await conexion.collection('eventos_procesados').countDocuments(),
+      ).toBe(0);
+    },
+  );
+
   it('health hace ping a MongoDB y propaga la correlacion', async () => {
     const res = await request(app.getHttpServer())
       .get('/health')
@@ -430,6 +462,33 @@ describe('reporting-service HTTP + MongoDB standalone', () => {
       ),
     );
     await SwaggerParser.validate(contrato);
+    for (const documento of [runtime.body, contrato]) {
+      expect(documento.components.securitySchemes.bearer).toMatchObject({
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+      });
+      for (const ruta of [
+        '/api/reportes/resumen',
+        '/api/reportes/sla',
+        '/api/reportes/tickets',
+      ]) {
+        expect(documento.paths[ruta].get.security).toEqual([{ bearer: [] }]);
+      }
+      expect(documento.paths['/api/eventos'].post.security ?? []).toEqual([]);
+      expect(documento.paths['/health'].get.security ?? []).toEqual([]);
+      expect(documento.servers[0].url).toBe('http://localhost:8080');
+      expect(documento.paths['/api/eventos'].post.servers[0].url).toBe(
+        'http://reporting-service:8085',
+      );
+      const correlacion =
+        documento.components.schemas.EventoDto.properties.correlationId;
+      expect(correlacion.minLength).toBe(1);
+      expect(correlacion.format).toBeUndefined();
+      expect(
+        documento.components.schemas.EventoDto.properties.eventId.format,
+      ).toBe('uuid');
+    }
     expect(Object.keys(runtime.body.paths).sort()).toEqual(
       Object.keys(contrato.paths).sort(),
     );

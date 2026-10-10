@@ -1,4 +1,4 @@
-# TriageDesk · defensa
+# UrgentIA · defensa
 
 Borrador del guion propuesto. Los bloques de P1–P5 requieren contenido y revisión
 de sus responsables; solo se verificó la implementación de P6 en esta rama.
@@ -14,10 +14,10 @@ de sus responsables; solo se verificó la implementación de P6 en esta rama.
 ## 2. Arquitectura · P6
 
 - Seis servicios; gateway como entrada pública.
-- Java para core, usuarios y gateway; Python para IA; NestJS para soporte.
+- Java para core, usuarios y gateway; Python/FastAPI para IA y notificaciones.
+- Node 20/NestJS para reportes.
 - Base independiente por servicio; ninguna lectura de tablas ajenas.
 - Reportes recibe eventos HTTP y mantiene su propia vista MongoDB.
-- Diagrama fuente: docs/diagrams/componentes-reporting.puml.
 
 ## 3. DDD estratégico · P3 (por revisar)
 
@@ -38,7 +38,7 @@ de sus responsables; solo se verificó la implementación de P6 en esta rama.
 - Categoría, urgencia, impacto y módulo; la IA no devuelve prioridad.
 - Enmascarado de datos personales, validación, timeout y fallback.
 - Proveedor mock para desarrollo y contingencia.
-- Completar con proveedor real y resultados de evaluación de P4.
+- Incorporar las evidencias de evaluación del proveedor real registradas por P4.
 
 ## 6. Eventos y notificaciones · P5 (por revisar)
 
@@ -55,7 +55,7 @@ de sus responsables; solo se verificó la implementación de P6 en esta rama.
 - Resumen, consultas paginadas y cumplimiento de SLA por prioridad.
 - Un duplicado no produce efectos; un fallo puede reintentarse.
 
-## 8. Demo integrada · P1 (pendiente de integración)
+## 8. Demo integrada · P1 (pendiente de ejecución)
 
 - Crear un ticket crítico por Swagger del gateway.
 - Mostrar prioridad P1, escalamiento, notificación y resumen.
@@ -64,8 +64,8 @@ de sus responsables; solo se verificó la implementación de P6 en esta rama.
 
 ## 9. Validación y cierre · P6
 
-- 22 tests unitarios y 39 de integración HTTP con MongoDB real.
+- 22 pruebas unitarias, 5 del verificador y 44 HTTP con MongoDB real.
 - Concurrencia, reintentos, orden de eventos, reaperturas y límites de SLA.
 - Demo del JavaScript compilado con respuestas reales guardadas.
-- Docker preparado; build pendiente en este WSL.
-- Pendientes: revisión del equipo, integración completa y ensayos.
+- Compose y prueba del flujo con mock incluidos; ejecución pendiente del CI.
+- Pendientes: ajustes P2/P5, revisión del equipo y ensayos.

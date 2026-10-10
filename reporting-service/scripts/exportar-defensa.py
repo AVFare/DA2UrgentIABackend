@@ -40,7 +40,7 @@ def pie(c, doc):
     c.saveState()
     c.setFont(FUENTE, 8)
     c.setFillColor(TINTA)
-    c.drawString(42, 26, 'TriageDesk · P6 · borrador para revision del equipo')
+    c.drawString(42, 26, 'UrgentIA · P6 · borrador para revision del equipo')
     c.drawRightString(A4[0] - 42, 26, str(doc.page))
     c.restoreState()
 
@@ -92,14 +92,14 @@ def informe():
             piezas.append(Spacer(1, 10))
     SimpleDocTemplate(str(DOCS / 'informe-p6.pdf'), pagesize=A4, rightMargin=42,
                       leftMargin=42, topMargin=40, bottomMargin=42,
-                      title='TriageDesk - Informe P6 (borrador)', author='Francisco Eduardo Nappa').build(
+                      title='UrgentIA - Informe P6 (borrador)', author='Francisco Eduardo Nappa').build(
         piezas, onFirstPage=pie, onLaterPages=pie)
 
 
 def diagrama(c, width):
     """Representacion vectorial de la arquitectura acordada para la diapositiva."""
     nombres = ['Usuarios\nJava · PostgreSQL', 'Tickets\nJava · PostgreSQL', 'Clasificacion\nPython · MongoDB',
-               'Notificaciones\nNestJS · MongoDB', 'Reportes (P6)\nNestJS · MongoDB']
+               'Notificaciones\nPython · MongoDB', 'Reportes (P6)\nNestJS · MongoDB']
     x0, y, ancho, alto, espacio = 45, 82, 134, 68, 15
     centro = width / 2
     c.setStrokeColor(VERDE)
@@ -124,13 +124,13 @@ def slides():
     secciones = re.split(r'^## ', texto, flags=re.M)[1:]
     width, height = landscape(A4)
     c = canvas.Canvas(str(DOCS / 'slides-p6.pdf'), pagesize=(width, height))
-    c.setTitle('TriageDesk - Slides de defensa (borrador)')
+    c.setTitle('UrgentIA - Slides de defensa (borrador)')
     c.setAuthor('Francisco Eduardo Nappa')
     for n, bloque in enumerate(secciones, 1):
         titulo, _, cuerpo = bloque.partition('\n')
         c.setFillColor(colors.HexColor('#F7FAF8')); c.rect(0, 0, width, height, fill=1, stroke=0)
         c.setFillColor(VERDE); c.rect(0, height - 15, width, 15, fill=1, stroke=0)
-        c.setFont(FUENTE, 10); c.drawString(45, height - 47, 'TRIAGEDESK / DEFENSA 1')
+        c.setFont(FUENTE, 10); c.drawString(45, height - 47, 'URGENTIA / DEFENSA 1')
         c.setFillColor(TINTA); c.setFont(FUENTE, 24); c.drawString(45, height - 95, titulo)
         # Une las continuaciones de cada viñeta del Markdown.
         bullets = []

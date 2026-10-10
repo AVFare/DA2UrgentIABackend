@@ -1,6 +1,7 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import {
   ApiHeader,
+  ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -13,6 +14,7 @@ import { ReportesService } from './reportes.service';
 import { ErrorDto } from '../common/error.dto';
 
 @ApiTags('Reportes')
+@ApiBearerAuth('bearer')
 @ApiBadRequestResponse({ type: ErrorDto })
 @ApiInternalServerErrorResponse({ type: ErrorDto })
 @ApiHeader({ name: 'X-Correlation-Id', required: false })

@@ -39,7 +39,7 @@
     },
     "correlationId": {
       "type": "string",
-      "format": "uuid"
+      "minLength": 1
     },
     "source": {
       "type": "string",

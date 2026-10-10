@@ -87,7 +87,10 @@ export class EventoDto {
   @IsISO8601({ strict: true })
   @Matches(/Z$/)
   occurredAt!: string;
-  @ApiProperty({ format: 'uuid' }) @IsUUID('4') correlationId!: string;
+  @ApiProperty({ minLength: 1, example: 'cid-eventos' })
+  @IsString()
+  @IsNotEmpty()
+  correlationId!: string;
   @ApiProperty({ enum: ['ticket-service'] })
   @Equals('ticket-service')
   source!: string;

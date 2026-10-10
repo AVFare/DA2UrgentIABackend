@@ -2,7 +2,7 @@
   "name": "reporting-service",
   "version": "0.1.0",
   "private": true,
-  "description": "Proyecciones CQRS y reportes de TriageDesk",
+  "description": "Proyecciones CQRS y reportes de UrgentIA",
   "engines": {
     "node": ">=20 <21"
   },
@@ -11,14 +11,15 @@
     "start": "node dist/main.js",
     "start:dev": "node --watch --require ts-node/register src/main.ts",
     "typecheck": "tsc --noEmit",
-    "test": "jest --runInBand",
+    "test": "jest --runInBand && node --test scripts/verificar-integracion.test.cjs",
     "test:watch": "jest --watch",
     "test:cov": "jest --runInBand --coverage",
     "test:e2e": "jest --config test/jest-e2e.json --runInBand",
     "format:check": "prettier --check src test scripts *.json *.md *.yml",
     "format": "prettier --write src test scripts *.json *.md *.yml",
     "demo": "npm run build && node scripts/demo.cjs",
-    "verificar:demo": "npm run build && node scripts/demo.cjs --verificar"
+    "verificar:demo": "npm run build && node scripts/demo.cjs --verificar",
+    "verificar:integracion": "node scripts/verificar-integracion.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.0",

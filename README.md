@@ -20,7 +20,7 @@ entrada desde afuera.
 | `ticket-service` | 8081 | Java 21, Spring Boot | PostgreSQL | Tickets, prioridad, SLA, estados y escalamiento |
 | `classification-service` | 8082 | Python 3.12, FastAPI | MongoDB | Clasifica el texto del ticket con un LLM |
 | `user-service` | 8083 | Java 21, Spring Boot | PostgreSQL | Usuarios, roles y login |
-| `notification-service` | 8084 | Node 20, NestJS | MongoDB | Notifica a partir de los eventos del ticket |
+| `notification-service` | 8084 | Python 3.12, FastAPI | MongoDB | Notifica a partir de los eventos del ticket |
 | `reporting-service` | 8085 | Node 20, NestJS | MongoDB | Reportes y cumplimiento de SLA |
 
 ![Diagrama de despliegue](docs/diagrams/despliegue.png)
@@ -42,8 +42,8 @@ docker compose up -d --build --wait
 El último comando construye las imágenes, levanta todo y espera a que cada contenedor esté
 sano. La primera vez tarda varios minutos.
 
-Por ahora el Compose incluye las dos bases de datos y el gateway. El resto de los servicios
-se suma a medida que cada uno esté listo.
+El Compose incluye los seis servicios y las dos bases de datos. Las consultas de reportes
+se acceden por el gateway con un JWT de AGENTE o ADMIN; los eventos de P6 quedan en la red interna.
 
 | Para | Abrir o correr |
 |---|---|
@@ -64,7 +64,7 @@ repositorio.
 ├── ticket-service/           Java (Maven)
 ├── user-service/             Java (Maven)
 ├── classification-service/   Python (pip)
-├── notification-service/     Node (npm)
+├── notification-service/     Python (pip)
 ├── reporting-service/        Node (npm)
 ├── contracts/                OpenAPI de cada servicio y esquema de los eventos
 ├── docs/                     Diagramas y decisiones de arquitectura

@@ -1,5 +1,5 @@
 # Entorno de desarrollo exclusivo de P6; no requiere los otros servicios.
-name: triagedesk-reporting-local
+name: urgentia-reporting-local
 services:
   mongo-reporting:
     image: mongo:7

@@ -16,7 +16,13 @@ export class EventosController {
   constructor(private readonly eventos: EventosService) {}
   @Post()
   @HttpCode(202)
-  @ApiOperation({ summary: 'Proyectar un evento de ticket (solo red interna)' })
+  @ApiOperation({
+    summary: 'Proyectar un evento de ticket (solo red interna)',
+    servers: [
+      { url: 'http://reporting-service:8085', description: 'Red interna' },
+      { url: 'http://localhost:8085', description: 'Desarrollo local de P6' },
+    ],
+  })
   @ApiAcceptedResponse({ type: ResultadoEventoDto })
   @ApiBadRequestResponse({
     type: ErrorDto,

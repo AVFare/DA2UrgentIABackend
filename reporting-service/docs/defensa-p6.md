@@ -5,7 +5,7 @@ No se contactó a integrantes ni se realizaron ensayos desde esta tarea.
 
 ## Apertura de Francisco (P6 · aproximadamente 90 segundos)
 
-“Nuestro proyecto es TriageDesk, una mesa de ayuda donde el usuario describe su
+“Nuestro proyecto es UrgentIA, una mesa de ayuda donde el usuario describe su
 problema y la inteligencia artificial sugiere una clasificación. La prioridad y
 el SLA se deciden con reglas del dominio, para conservar un comportamiento
 predecible. La arquitectura separa gateway, tickets, usuarios, clasificación,
@@ -42,8 +42,11 @@ Desde reporting-service ejecutar npm ci y npm run demo. Abrir /api-docs/.
    npm run verificar:demo. El archivo evidencias.json incluye la repetición,
    el evento viejo y la resolución tardía.
 
-La demo integrada debe ejecutarla P1 cuando estén disponibles gateway, productores
-y demás servicios. La demo local usa eventos de ejemplo y no verifica al LLM.
+El Compose raíz incluye todos los servicios. P1 debe ejecutar la demo por el
+gateway y capturar sus evidencias; `npm run verificar:integracion` comprueba
+el flujo crítico con el proveedor mock. La demo local de P6 usa eventos de
+ejemplo y no verifica al LLM. El fallback de IA requiere el ajuste de P2 para
+publicar el estado PENDIENTE_CLASIFICACION a los consumidores.
 
 ## Preguntas posibles
 

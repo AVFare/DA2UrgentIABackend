@@ -1,5 +1,5 @@
 @startuml
-title TriageDesk — arquitectura acordada y componentes de P6
+title UrgentIA — arquitectura acordada y componentes de P6
 skinparam componentStyle rectangle
 skinparam shadowing false
 left to right direction
@@ -8,7 +8,7 @@ component "api-gateway :8080\nP1 · Java / Spring Cloud Gateway" as gateway
 component "user-service :8083\nP3 · Java / Spring Security" as usuarios
 component "ticket-service :8081\nP2 · Core / Hexagonal" as tickets
 component "classification-service :8082\nP4 · Python / FastAPI" as clasificador
-component "notification-service :8084\nP5 · NestJS" as notificaciones
+component "notification-service :8084\nP5 · Python / FastAPI" as notificaciones
 cloud "Proveedor LLM" as llm
 database "users_db\nPostgreSQL" as usersdb
 database "tickets_db\nPostgreSQL" as ticketsdb
@@ -53,9 +53,9 @@ health --> reportingdb : ping
 eventos ..> common
 reportes ..> common
 note bottom of gateway
-  Los componentes de P1–P5 representan
-  la arquitectura acordada en CONTEXTO_PROYECTO.md.
-  Su implementacion no se certifica en esta rama.
+  Servicios integrados desde dev/entrega-1.
+  P6 agregado al Compose compartido.
+  Flujo completo pendiente de ejecutar en CI.
   /api/eventos no se publica por el gateway.
 end note
 note bottom of reportingdb

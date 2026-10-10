@@ -1,5 +1,5 @@
 {
-  "generadoEn": "2026-10-04T16:37:21.635Z",
+  "generadoEn": "2026-10-10T17:25:37.205Z",
   "entorno": {
     "node": "v20.20.1",
     "mongo": "7.0.24",
@@ -23,7 +23,7 @@
       "ruta": "/api/eventos",
       "status": 202,
       "respuesta": {
-        "eventId": "77dd2b8f-9356-43e0-8c4d-5f205daeacd8",
+        "eventId": "a95b8404-1c55-4410-ad0d-70497d75eedf",
         "resultado": "PROCESADO"
       }
     },
@@ -33,7 +33,7 @@
       "ruta": "/api/eventos",
       "status": 202,
       "respuesta": {
-        "eventId": "170ebc0e-4ffb-41ae-92d0-e2a3cdc3c5d4",
+        "eventId": "91061f55-ace4-47cc-9ee8-28fdead054db",
         "resultado": "PROCESADO"
       }
     },
@@ -43,7 +43,7 @@
       "ruta": "/api/eventos",
       "status": 202,
       "respuesta": {
-        "eventId": "170ebc0e-4ffb-41ae-92d0-e2a3cdc3c5d4",
+        "eventId": "91061f55-ace4-47cc-9ee8-28fdead054db",
         "resultado": "DUPLICADO"
       }
     },
@@ -53,7 +53,7 @@
       "ruta": "/api/eventos",
       "status": 202,
       "respuesta": {
-        "eventId": "e30c13e2-de8f-4ae9-a422-4b60eeb5b79d",
+        "eventId": "68cb179b-f5f4-4798-92cd-49c4456fe4f7",
         "resultado": "PROCESADO"
       }
     },
@@ -91,7 +91,7 @@
           "RESUELTO": 0,
           "CERRADO": 0
         },
-        "generadoEn": "2026-10-04T16:37:21.572Z"
+        "generadoEn": "2026-10-10T17:25:37.163Z"
       }
     },
     {
@@ -102,11 +102,11 @@
       "respuesta": {
         "vencidos": [
           {
-            "ticketId": "1ecab94d-d47a-48f3-a1b5-62e20a4ef64e",
+            "ticketId": "01e8488a-19b0-42a1-af53-d39632f35ac4",
             "titulo": "Produccion caida (demo P6)",
             "prioridad": "P1",
             "estado": "ESCALADO",
-            "fechaLimiteSla": "2026-10-04T15:37:22.409Z",
+            "fechaLimiteSla": "2026-10-10T16:25:38.056Z",
             "horasVencido": 1
           }
         ],
@@ -132,7 +132,7 @@
             "porcentaje": null
           }
         },
-        "generadoEn": "2026-10-04T16:37:21.588Z"
+        "generadoEn": "2026-10-10T17:25:37.170Z"
       }
     },
     {
@@ -143,19 +143,19 @@
       "respuesta": {
         "content": [
           {
-            "ticketId": "1ecab94d-d47a-48f3-a1b5-62e20a4ef64e",
+            "ticketId": "01e8488a-19b0-42a1-af53-d39632f35ac4",
             "titulo": "Produccion caida (demo P6)",
             "estado": "ESCALADO",
             "prioridad": "P1",
             "categoria": "INCIDENTE",
             "moduloAfectado": "AUTENTICACION",
             "escalado": true,
-            "solicitanteId": "6b32a255-f60c-40c7-8c0e-df04f7150102",
+            "solicitanteId": "7e50aa8e-7727-4f98-b44b-8a73ada37ede",
             "agenteAsignadoId": null,
-            "fechaCreacion": "2026-10-04T14:37:21.409Z",
-            "fechaLimiteSla": "2026-10-04T15:37:22.409Z",
+            "fechaCreacion": "2026-10-10T15:25:37.056Z",
+            "fechaLimiteSla": "2026-10-10T16:25:38.056Z",
             "fechaResolucion": null,
-            "ultimoEventoEn": "2026-10-04T14:37:22.409Z"
+            "ultimoEventoEn": "2026-10-10T15:25:38.056Z"
           }
         ],
         "page": 0,
@@ -170,7 +170,7 @@
       "ruta": "/api/eventos",
       "status": 202,
       "respuesta": {
-        "eventId": "f517b221-d342-45d7-9197-3af42cbd58fe",
+        "eventId": "382ea574-d715-4945-b7e6-3431e68f7bda",
         "resultado": "PROCESADO"
       }
     },
@@ -203,7 +203,7 @@
             "porcentaje": null
           }
         },
-        "generadoEn": "2026-10-04T16:37:21.625Z"
+        "generadoEn": "2026-10-10T17:25:37.200Z"
       }
     }
   ]
