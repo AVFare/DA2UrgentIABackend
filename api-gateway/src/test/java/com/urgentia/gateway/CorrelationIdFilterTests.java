@@ -17,7 +17,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 class CorrelationIdFilterTests {
 
     private static final String HEADER = "X-Correlation-Id";
-    private static final ServicioFalso servicioFalso = new ServicioFalso();
+    private static final ServicioFalso servicioFalso = new ServicioFalso(true);
 
     @Autowired
     private WebTestClient cliente;
@@ -58,6 +58,18 @@ class CorrelationIdFilterTests {
                 .expectHeader().valueEquals(HEADER, "abc-123");
 
         assertThat(servicioFalso.headerRecibido(HEADER)).isEqualTo("abc-123");
+    }
+
+    @Test
+    void elLoginDevuelveUnaSolaCorrelacionAunqueElServicioTambienLaDevuelva() {
+        cliente.post().uri("/api/auth/login")
+                .header(HEADER, "cid-login")
+                .bodyValue(java.util.Map.of("email", "usuario@urgentia.local", "password", "clave"))
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals(HEADER, "cid-login");
+
+        assertThat(servicioFalso.headerRecibido(HEADER)).isEqualTo("cid-login");
     }
 
     @Test

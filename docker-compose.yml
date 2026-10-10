@@ -133,6 +133,20 @@ services:
       retries: 20
     networks: [urgentia-net]
 
+  reporting-service:
+    build: ./reporting-service
+    environment:
+      MONGO_URI: mongodb://reporting_user:${REPORTING_DB_PASSWORD}@mongo:27017/reporting_db
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8085/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      retries: 20
+    networks: [urgentia-net]
+
 volumes:
   pgdata:
   mongodata:

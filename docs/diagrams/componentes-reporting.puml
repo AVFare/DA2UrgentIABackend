@@ -1,0 +1,66 @@
+@startuml
+title UrgentIA — arquitectura acordada y componentes de P6
+skinparam componentStyle rectangle
+skinparam shadowing false
+left to right direction
+actor "Cliente\nSwagger / Postman" as cliente
+component "api-gateway :8080\nP1 · Java / Spring Cloud Gateway" as gateway
+component "user-service :8083\nP3 · Java / Spring Security" as usuarios
+component "ticket-service :8081\nP2 · Core / Hexagonal" as tickets
+component "classification-service :8082\nP4 · Python / FastAPI" as clasificador
+component "notification-service :8084\nP5 · Python / FastAPI" as notificaciones
+cloud "Proveedor LLM" as llm
+database "users_db\nPostgreSQL" as usersdb
+database "tickets_db\nPostgreSQL" as ticketsdb
+database "classification_db\nMongoDB" as classificationdb
+database "notifications_db\nMongoDB" as notificationsdb
+package "reporting-service :8085 · P6 · implementado en esta rama" #E7F4EF {
+  component "EventosController\nPOST /api/eventos" as eventos
+  component "EventosService\nValidacion e idempotencia" as consumidor
+  component "Strategy\nSeis proyectores" as proyectores
+  component "TicketViewRepository\nUpsert atomico" as vistasrepo
+  component "EventoProcesadoRepository\nInbox persistente" as inboxrepo
+  component "ReportesController\nGET /api/reportes/*" as reportes
+  component "ReportesService\nDTO y porcentajes" as consultas
+  component "ReportesRepository\nAgregaciones MongoDB" as lecturasrepo
+  component "HealthController\nGET /health" as health
+  component "Common\nCorrelationId / errores / logs" as common
+}
+database "reporting_db\nMongoDB standalone\nticket_view\neventos_procesados" as reportingdb #E7F4EF
+cliente --> gateway : HTTP + JWT
+gateway --> usuarios : login / usuarios
+gateway --> tickets : tickets
+gateway --> notificaciones : consultas
+gateway --> reportes : AGENTE / ADMIN
+tickets --> clasificador : REST / timeout / fallback
+clasificador --> llm : clasificacion
+usuarios --> usersdb
+tickets --> ticketsdb
+clasificador --> classificationdb
+notificaciones --> notificationsdb
+tickets --> notificaciones : eventos HTTP
+tickets --> eventos : eventos HTTP internos
+eventos --> consumidor
+consumidor --> inboxrepo : guardar / confirmar
+consumidor --> proyectores : seleccionar por eventType
+proyectores --> vistasrepo : proyeccion
+vistasrepo --> reportingdb
+inboxrepo --> reportingdb
+reportes --> consultas
+consultas --> lecturasrepo
+lecturasrepo --> reportingdb
+health --> reportingdb : ping
+eventos ..> common
+reportes ..> common
+note bottom of gateway
+  Servicios integrados desde dev/entrega-1.
+  P6 agregado al Compose compartido.
+  Flujo completo pendiente de ejecutar en CI.
+  /api/eventos no se publica por el gateway.
+end note
+note bottom of reportingdb
+  Ningun servicio lee bases ajenas.
+  P6 proyecta snapshots; no calcula prioridades.
+  La demo local utiliza un MongoDB temporal separado.
+end note
+@enduml

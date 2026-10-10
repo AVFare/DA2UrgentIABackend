@@ -117,6 +117,8 @@ jobs:
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
           npm test
+          npm run typecheck
+          npm run test:e2e
 
       - name: Construir la imagen Docker
         if: steps.proyecto.outputs.existe == 'true' && hashFiles(format('{0}/Dockerfile', matrix.servicio)) != ''
@@ -128,6 +130,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          package-manager-cache: false
+
       - name: Crear el .env a partir del ejemplo
         run: cp .env.example .env
 
@@ -136,6 +143,10 @@ jobs:
 
       - name: Probar el gateway desde afuera
         run: curl -fsS http://localhost:8080/health
+
+      - name: Probar ticket critico, notificacion y reportes por el gateway
+        if: hashFiles('reporting-service/scripts/verificar-integracion.cjs') != ''
+        run: node reporting-service/scripts/verificar-integracion.cjs
 
       - name: Probar que cada base acepta a su usuario
         run: |

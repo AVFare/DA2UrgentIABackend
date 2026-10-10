@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Eventos consumidos por P6 (propuesta para P2/P5)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventId",
+    "eventType",
+    "version",
+    "occurredAt",
+    "correlationId",
+    "source",
+    "payload"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "eventType": {
+      "type": "string",
+      "enum": [
+        "TicketCreado",
+        "TicketClasificado",
+        "TicketEscalado",
+        "TicketAsignado",
+        "TicketEstadoCambiado",
+        "TicketResuelto"
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "enum": [1]
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "correlationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "string",
+      "enum": ["ticket-service"]
+    },
+    "payload": {
+      "$ref": "#/$defs/PayloadEventoDto"
+    }
+  },
+  "$defs": {
+    "TicketSnapshotDto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ticketId",
+        "titulo",
+        "estado",
+        "prioridad",
+        "categoria",
+        "moduloAfectado",
+        "solicitanteId",
+        "agenteAsignadoId",
+        "fechaCreacion",
+        "fechaLimiteSla"
+      ],
+      "properties": {
+        "ticketId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "titulo": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "estado": {
+          "type": "string",
+          "enum": [
+            "NUEVO",
+            "PENDIENTE_CLASIFICACION",
+            "CLASIFICADO",
+            "ASIGNADO",
+            "EN_CURSO",
+            "ESCALADO",
+            "RESUELTO",
+            "CERRADO"
+          ]
+        },
+        "prioridad": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["P1", "P2", "P3", "P4"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "categoria": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["INCIDENTE", "SOLICITUD", "CONSULTA", "BUG"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "moduloAfectado": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "AUTENTICACION",
+                "FACTURACION",
+                "PAGOS",
+                "REPORTES",
+                "INFRAESTRUCTURA",
+                "BASE_DE_DATOS",
+                "INTEGRACIONES",
+                "OTRO"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "solicitanteId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "agenteAsignadoId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fechaCreacion": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "fechaLimiteSla": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "PayloadEventoDto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ticket"],
+      "properties": {
+        "ticket": {
+          "$ref": "#/$defs/TicketSnapshotDto"
+        },
+        "estadoAnterior": {
+          "type": "string",
+          "enum": [
+            "NUEVO",
+            "PENDIENTE_CLASIFICACION",
+            "CLASIFICADO",
+            "ASIGNADO",
+            "EN_CURSO",
+            "ESCALADO",
+            "RESUELTO",
+            "CERRADO"
+          ]
+        },
+        "motivo": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "description": "estadoAnterior obligatorio en TicketEstadoCambiado, TicketEscalado y TicketResuelto; motivo obligatorio en TicketEscalado."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "eventType": {
+            "const": "TicketEstadoCambiado"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "required": ["estadoAnterior"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "eventType": {
+            "const": "TicketEscalado"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "required": ["estadoAnterior", "motivo"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "eventType": {
+            "const": "TicketResuelto"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "required": ["estadoAnterior"]
+          }
+        }
+      }
+    }
+  ]
+}
