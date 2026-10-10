@@ -38,6 +38,12 @@ public class CorrelationIdFilter implements WebFilter {
                 .header(HEADER, correlationId)
                 .build();
         exchange.getResponse().getHeaders().set(HEADER, correlationId);
+        // El servicio tambien devuelve este header y el proxy puede agregarlo
+        // a la respuesta. Al confirmarla, conservar un unico valor del pedido.
+        exchange.getResponse().beforeCommit(() -> {
+            exchange.getResponse().getHeaders().set(HEADER, correlationId);
+            return Mono.empty();
+        });
         exchange.getAttributes().put(ATRIBUTO, correlationId);
 
         // El correlationId va como dato del log; LogJsonFormatter lo escribe como campo propio.

@@ -15,6 +15,10 @@ final class ServicioFalso {
     private volatile Headers ultimosHeaders;
 
     ServicioFalso() {
+        this(false);
+    }
+
+    ServicioFalso(boolean devolverCorrelacion) {
         try {
             servidor = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         } catch (IOException e) {
@@ -22,6 +26,10 @@ final class ServicioFalso {
         }
         servidor.createContext("/", exchange -> {
             ultimosHeaders = exchange.getRequestHeaders();
+            if (devolverCorrelacion) {
+                exchange.getResponseHeaders().set("X-Correlation-Id",
+                        ultimosHeaders.getFirst("X-Correlation-Id"));
+            }
             byte[] cuerpo = exchange.getRequestURI().getPath().getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, cuerpo.length);
             try (OutputStream salida = exchange.getResponseBody()) {
