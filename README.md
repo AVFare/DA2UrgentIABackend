@@ -57,6 +57,18 @@ se acceden por el gateway con un JWT de AGENTE o ADMIN; los eventos de P6 quedan
 Los valores de `.env.example` sirven para desarrollo. El archivo `.env` no se sube al
 repositorio.
 
+## Demo
+
+Con todo levantado, el flujo de la demo (login, ticket crítico, notificación a la guardia,
+reportes y controles del gateway) se puede correr de cuatro formas:
+
+| Con | Cómo |
+   |---|---|
+| Docker (sin instalar nada) | `docker run --rm -v "${PWD}/docs/demo:/etc/newman" postman/newman run urgentia-demo.postman_collection.json --env-var baseUrl=http://host.docker.internal:8080` |
+| Postman | Importar [`docs/demo/urgentia-demo.postman_collection.json`](docs/demo/urgentia-demo.postman_collection.json) y correr las carpetas 1 y 2 |
+| IntelliJ IDEA Ultimate | Abrir [`demo.http`](demo.http) y ejecutar los pedidos en orden |
+| Swagger | Seguir [`docs/demo/demo-swagger.md`](docs/demo/demo-swagger.md) |
+
 ## Estructura del repositorio
 
 ```
@@ -69,6 +81,7 @@ repositorio.
 ├── contracts/                OpenAPI de cada servicio y esquema de los eventos
 ├── docs/                     Diagramas y decisiones de arquitectura
 ├── infra/                    Scripts de inicio de PostgreSQL y MongoDB
+├── demo.http                 Flujo de la demo para IntelliJ
 ├── docker-compose.yml
 ├── .env.example
 └── CONTEXTO_PROYECTO.md
