@@ -40,9 +40,3 @@ El flujo espera `LLM_PROVIDER=mock`, que es el valor de `.env.example`.
 
 En cualquier respuesta, el header `x-correlation-id` muestra el identificador que el
 gateway generó para ese pedido.
-
-## Nota
-
-notification-service todavía no declara el esquema `bearer` en su OpenAPI, así que en su
-pantalla no aparece el botón Authorize y el paso 4 responde 401. Hasta que se agregue, ese
-paso se hace con `demo.http` o con la colección de Postman.
