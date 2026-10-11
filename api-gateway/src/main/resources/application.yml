@@ -6,6 +6,13 @@ spring:
     name: api-gateway
   main:
     banner-mode: "off"
+  cloud:
+    gateway:
+      server:
+        webflux:
+          # Sin esto el gateway no envia X-Forwarded-* y el Swagger de los servicios Java
+          # publica su direccion interna en lugar de la del gateway.
+          trusted-proxies: ".*"
 
 # Una linea JSON por evento: timestamp, level, service, correlationId, message.
 logging:
