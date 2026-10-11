@@ -1,0 +1,485 @@
+{
+  "info": {
+    "name": "UrgentIA - Demo Defensa 1",
+    "description": "Flujo de la demo por el api-gateway. Antes: cp .env.example .env y docker compose up -d --build --wait (con LLM_PROVIDER=mock). Ejecutar las carpetas 1 y 2 en orden; la carpeta 3 se ejecuta a mano, apagando y volviendo a prender classification-service.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Flujo principal",
+      "item": [
+        {
+          "name": "0. El gateway responde (ruta publica, sin token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"El gateway esta arriba\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql(\"UP\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health"
+          }
+        },
+        {
+          "name": "1. Login del solicitante",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Login del solicitante\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().usuario.rol).to.eql(\"SOLICITANTE\");",
+                  "});",
+                  "pm.collectionVariables.set(\"tokenSolicitante\", pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"solicitante@urgentia.local\",\n  \"password\": \"Usuario123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "2. El solicitante crea un ticket critico: vuelve P1 y ESCALADO",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Ticket creado, P1 y escalado\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.json().prioridad, \"revisar LLM_PROVIDER=mock\").to.eql(\"P1\");",
+                  "    pm.expect(pm.response.json().estado).to.eql(\"ESCALADO\");",
+                  "});",
+                  "pm.collectionVariables.set(\"ticketId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenSolicitante}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/tickets",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"titulo\": \"No puede ingresar nadie\",\n  \"descripcion\": \"Producción caída, todos los usuarios bloqueados en el login desde las 9\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "3. Login del agente de guardia",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Login del agente\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().usuario.rol).to.eql(\"AGENTE\");",
+                  "});",
+                  "pm.collectionVariables.set(\"tokenAgente\", pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"guardia@urgentia.local\",\n  \"password\": \"Agente123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4. El agente consulta el ticket; el gateway devuelve el mismo X-Correlation-Id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Ticket encontrado y correlacion propagada\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.headers.get(\"X-Correlation-Id\")).to.eql(\"11111111-1111-4111-8111-111111111111\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAgente}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "11111111-1111-4111-8111-111111111111"
+              }
+            ],
+            "url": "{{baseUrl}}/api/tickets/{{ticketId}}"
+          }
+        },
+        {
+          "name": "5. Notificacion a la guardia",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Los eventos se entregan de forma asincronica: espera breve antes de consultar.",
+                  "setTimeout(function () {}, 1500);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Se notifico el escalamiento a la guardia\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var notificada = pm.response.json().content.some(function (n) {",
+                  "        return n.tipoEvento === \"TicketEscalado\" && n.destinatario === \"GRUPO:GUARDIA\";",
+                  "    });",
+                  "    pm.expect(notificada, \"falta la notificacion a GRUPO:GUARDIA (repetir el pedido)\").to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAgente}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/notificaciones?ticketId={{ticketId}}&size=100"
+          }
+        },
+        {
+          "name": "6. El ticket aparece en la vista de reportes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"El ticket esta proyectado en reportes\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var id = pm.collectionVariables.get(\"ticketId\");",
+                  "    var proyectado = pm.response.json().content.some(function (v) { return v.ticketId === id; });",
+                  "    pm.expect(proyectado, \"el ticket todavia no aparece (repetir el pedido)\").to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAgente}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/reportes/tickets?prioridad=P1&estado=ESCALADO&size=100"
+          }
+        },
+        {
+          "name": "7. Resumen de reportes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"El resumen cuenta el escalado\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().escalados).to.be.at.least(1);",
+                  "    pm.expect(pm.response.json().porPrioridad.P1).to.be.at.least(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAgente}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/reportes/resumen"
+          }
+        },
+        {
+          "name": "8. Cumplimiento de SLA",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Reporte de SLA\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAgente}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/reportes/sla"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Controles del gateway",
+      "item": [
+        {
+          "name": "9. Sin token responde 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Sin token: 401 NO_AUTENTICADO\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "    pm.expect(pm.response.json().codigo).to.eql(\"NO_AUTENTICADO\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/tickets"
+          }
+        },
+        {
+          "name": "10. Token invalido responde 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Token invalido: 401 NO_AUTENTICADO\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "    pm.expect(pm.response.json().codigo).to.eql(\"NO_AUTENTICADO\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer esto-no-es-un-token"
+              }
+            ],
+            "url": "{{baseUrl}}/api/tickets"
+          }
+        },
+        {
+          "name": "11. Un solicitante no puede ver reportes: responde 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Rol insuficiente: 403 SIN_PERMISO\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "    pm.expect(pm.response.json().codigo).to.eql(\"SIN_PERMISO\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenSolicitante}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/reportes/resumen"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Fallback - IA caida (a mano)",
+      "item": [
+        {
+          "name": "F1. Crear un ticket con la IA apagada",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"El ticket se crea aunque la IA no responda\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "console.log(\"Estado del ticket: \" + pm.response.json().estado);",
+                  "pm.collectionVariables.set(\"ticketPendienteId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenSolicitante}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/tickets",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"titulo\": \"Error al exportar el reporte mensual\",\n  \"descripcion\": \"Al exportar el reporte mensual a Excel aparece un error y no se descarga el archivo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Antes: docker compose stop classification-service. El ticket queda PENDIENTE_CLASIFICACION."
+          }
+        },
+        {
+          "name": "F2. El agente reclasifica el ticket con la IA otra vez arriba",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Ticket reclasificado\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "console.log(\"Estado: \" + pm.response.json().estado + \" - Prioridad: \" + pm.response.json().prioridad);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAgente}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/tickets/{{ticketPendienteId}}/reclasificacion",
+            "description": "Antes: docker compose start classification-service y esperar a que figure healthy en docker compose ps."
+          }
+        }
+      ],
+      "description": "1) docker compose stop classification-service  2) F1  3) docker compose start classification-service  4) F2"
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "tokenSolicitante",
+      "value": ""
+    },
+    {
+      "key": "tokenAgente",
+      "value": ""
+    },
+    {
+      "key": "ticketId",
+      "value": ""
+    },
+    {
+      "key": "ticketPendienteId",
+      "value": ""
+    }
+  ]
+}
