@@ -4,6 +4,11 @@ info:
   description: 'UrgentIA: consume eventos de tickets y registra notificaciones (email
     simulado e internas).'
   version: 0.1.0
+servers:
+- url: http://localhost:8080
+  description: A traves del api-gateway (rol AGENTE o ADMIN)
+- url: http://localhost:8084
+  description: Directo al servicio (red interna)
 paths:
   /health:
     get:
@@ -19,6 +24,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OutputHealth'
+      security: []
   /api/eventos:
     post:
       tags:
@@ -48,6 +54,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OutputError'
+      security: []
   /api/notificaciones:
     get:
       tags:
@@ -530,3 +537,11 @@ components:
       - TicketEstadoCambiado
       - TicketResuelto
       title: TipoEvento
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token de POST /api/auth/login (user-service). Lo valida el gateway.
+security:
+- bearer: []

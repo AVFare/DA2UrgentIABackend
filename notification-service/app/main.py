@@ -9,6 +9,7 @@ from app.endpoints import eventos, health, notificaciones
 from app.exceptions.handlers import registrar_handlers
 from app.logging_config import configurar_logging
 from app.middleware.correlation import correlation_id_middleware
+from app.openapi import configurar_openapi
 from app.repositories.evento_procesado_repository import EventoProcesadoRepository
 from app.repositories.notificacion_repository import NotificacionRepository
 
@@ -22,25 +23,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-def _openapi_sin_422(app: FastAPI) -> None:
-    """La validacion responde 400 con el formato comun, no el 422 de FastAPI: se saca del Swagger."""
-    generar = app.openapi
-
-    def openapi() -> dict:
-        if app.openapi_schema:
-            return app.openapi_schema
-        esquema = generar()
-        for operaciones in esquema.get("paths", {}).values():
-            for operacion in operaciones.values():
-                operacion.get("responses", {}).pop("422", None)
-        for nombre in ("HTTPValidationError", "ValidationError"):
-            esquema.get("components", {}).get("schemas", {}).pop(nombre, None)
-        app.openapi_schema = esquema
-        return esquema
-
-    app.openapi = openapi
-
-
 def create_app() -> FastAPI:
     configurar_logging()
     app = FastAPI(
@@ -51,7 +33,7 @@ def create_app() -> FastAPI:
     )
     app.middleware("http")(correlation_id_middleware)
     registrar_handlers(app)
-    _openapi_sin_422(app)
+    configurar_openapi(app)
     app.include_router(health.router)
     app.include_router(eventos.router)
     app.include_router(notificaciones.router)
