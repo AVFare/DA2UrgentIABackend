@@ -22,7 +22,7 @@ node "Host con Docker" as host {
     node "user-service\nJava 21 - Spring Boot\n:8083" as us <<contenedor>>
     node "ticket-service\nJava 21 - Spring Boot\n:8081" as ts <<contenedor>>
     node "classification-service\nPython 3.12 - FastAPI\n:8082" as cs <<contenedor>>
-    node "notification-service\nNode 20 - NestJS\n:8084" as ns <<contenedor>>
+    node "notification-service\nPython 3.12 - FastAPI\n:8084" as ns <<contenedor>>
     node "reporting-service\nNode 20 - NestJS\n:8085" as rs <<contenedor>>
 
     node "postgres\nPostgreSQL 16\n:5432" as pg <<contenedor>> {
