@@ -1,0 +1,3 @@
+# Solo para los tests. Se suma al application.yml principal (no lo reemplaza).
+jwt:
+  secret: secreto-solo-para-tests-de-al-menos-32-caracteres

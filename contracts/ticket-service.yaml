@@ -1,0 +1,576 @@
+openapi: 3.0.3
+info:
+  title: UrgentIA - ticket-service
+  version: 0.1.0
+  description: |
+    Core Domain de UrgentIA: tickets, prioridad (P1-P4), SLA, estados y escalamiento.
+    La IA sugiere la clasificacion; el dominio decide la prioridad con la matriz de la seccion 8.1.
+
+    Desde afuera se llama a traves del gateway (http://localhost:8080) con un JWT. El gateway
+    valida el token y le pasa al servicio los headers X-User-Id y X-User-Rol, que el servicio usa
+    para saber quien es el solicitante y para que un SOLICITANTE vea solo sus tickets.
+
+    Fuente de verdad: CONTEXTO_PROYECTO.md, secciones 5, 7, 8 y 9.2. Dueño: P2.
+servers:
+  - url: http://localhost:8080
+    description: A traves del api-gateway
+  - url: http://localhost:8081
+    description: Directo al servicio (solo desarrollo; mandar X-User-Id y X-User-Rol a mano)
+security:
+  - bearer: []
+tags:
+  - name: Tickets
+  - name: Health
+
+paths:
+  /api/tickets:
+    post:
+      tags: [Tickets]
+      summary: Crear un ticket
+      description: |
+        Crea el ticket, lo clasifica con la IA, calcula prioridad y SLA y, si es critico, lo escala.
+        Todo ocurre en esta llamada. Si la IA falla o tarda mas de 7 s, el ticket queda
+        PENDIENTE_CLASIFICACION y se responde 201 igual. El solicitante sale de X-User-Id.
+      operationId: crearTicket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearTicketRequest'
+            example:
+              titulo: No puede ingresar nadie
+              descripcion: Producción caída, todos los usuarios bloqueados en el login desde las 9
+      responses:
+        '201':
+          description: Ticket creado (clasificado, escalado o pendiente de clasificacion)
+          headers:
+            Location:
+              description: URL del ticket creado
+              schema:
+                type: string
+                example: /api/tickets/7c9e6679-7425-40de-944b-e07fc1f90ae7
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+              examples:
+                escalado:
+                  $ref: '#/components/examples/TicketEscalado'
+                pendiente:
+                  $ref: '#/components/examples/TicketPendiente'
+        '400':
+          $ref: '#/components/responses/Validacion'
+    get:
+      tags: [Tickets]
+      summary: Listar tickets
+      description: |
+        Orden: prioridad ascendente (P1 primero; los que no tienen prioridad, al final) y fecha
+        de creacion descendente. Un SOLICITANTE solo ve sus propios tickets.
+      operationId: listarTickets
+      parameters:
+        - name: estado
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/EstadoTicket'
+        - name: prioridad
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Prioridad'
+        - name: categoria
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Categoria'
+        - name: page
+          in: query
+          required: false
+          description: Numero de pagina, desde 0
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          description: Tamaño de pagina
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Pagina de tickets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaTicket'
+        '400':
+          $ref: '#/components/responses/Validacion'
+
+  /api/tickets/{id}:
+    get:
+      tags: [Tickets]
+      summary: Ver un ticket
+      description: Un SOLICITANTE solo puede ver sus propios tickets; si pide uno ajeno recibe 404.
+      operationId: obtenerTicket
+      parameters:
+        - $ref: '#/components/parameters/TicketId'
+      responses:
+        '200':
+          description: El ticket
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+              examples:
+                escalado:
+                  $ref: '#/components/examples/TicketEscalado'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+
+  /api/tickets/{id}/asignacion:
+    patch:
+      tags: [Tickets]
+      summary: Asignar un agente
+      description: |
+        En CLASIFICADO el ticket pasa a ASIGNADO. En ESCALADO se asigna (o reasigna) sin cambiar
+        el estado, para que la guardia lo tome. En cualquier otro estado: 409 TRANSICION_INVALIDA.
+      operationId: asignarTicket
+      parameters:
+        - $ref: '#/components/parameters/TicketId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AsignarTicketRequest'
+            example:
+              agenteId: b1c2d3e4-0000-4000-8000-000000000002
+      responses:
+        '200':
+          description: Ticket asignado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/TransicionInvalida'
+
+  /api/tickets/{id}/estado:
+    patch:
+      tags: [Tickets]
+      summary: Cambiar el estado
+      description: |
+        Transiciones permitidas (seccion 8.4):
+        ASIGNADO -> EN_CURSO o ESCALADO; EN_CURSO -> RESUELTO o ESCALADO;
+        ESCALADO -> EN_CURSO (requiere agente asignado); RESUELTO -> CERRADO o EN_CURSO (reabrir).
+        Pasar a EN_CURSO o RESUELTO sin agente: 409 REGLA_DE_NEGOCIO.
+        El motivo es obligatorio solo para ESCALADO (si falta: 400 VALIDACION).
+      operationId: cambiarEstadoTicket
+      parameters:
+        - $ref: '#/components/parameters/TicketId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CambiarEstadoRequest'
+            examples:
+              escalar:
+                value:
+                  estado: ESCALADO
+                  motivo: El cliente reporta pérdida de datos
+              resolver:
+                value:
+                  estado: RESUELTO
+      responses:
+        '200':
+          description: Estado cambiado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          description: TRANSICION_INVALIDA o REGLA_DE_NEGOCIO
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                transicionInvalida:
+                  value:
+                    codigo: TRANSICION_INVALIDA
+                    mensaje: No se puede pasar de CERRADO a EN_CURSO
+                    detalles:
+                      - campo: estado
+                        mensaje: transición no permitida
+                    timestamp: '2026-10-05T14:03:11Z'
+                    path: /api/tickets/7c9e6679-7425-40de-944b-e07fc1f90ae7/estado
+                    correlationId: a8e1b2c3-0000-4000-8000-000000000000
+                reglaDeNegocio:
+                  value:
+                    codigo: REGLA_DE_NEGOCIO
+                    mensaje: Para pasar a EN_CURSO el ticket tiene que tener un agente asignado
+                    timestamp: '2026-10-05T14:03:11Z'
+                    path: /api/tickets/7c9e6679-7425-40de-944b-e07fc1f90ae7/estado
+                    correlationId: a8e1b2c3-0000-4000-8000-000000000000
+
+  /api/tickets/{id}/reclasificacion:
+    post:
+      tags: [Tickets]
+      summary: Reclasificar con la IA
+      description: |
+        Sin body. Solo para tickets PENDIENTE_CLASIFICACION o CLASIFICADO. Vuelve a pedir la
+        clasificacion, recalcula prioridad y SLA y puede escalar. Si la IA no responde: 503 y el
+        ticket no cambia.
+      operationId: reclasificarTicket
+      parameters:
+        - $ref: '#/components/parameters/TicketId'
+      responses:
+        '200':
+          description: Ticket reclasificado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/TransicionInvalida'
+        '503':
+          description: IA_NO_DISPONIBLE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                codigo: IA_NO_DISPONIBLE
+                mensaje: 'La IA no esta disponible: el ticket no se reclasifico'
+                timestamp: '2026-10-05T14:03:11Z'
+                path: /api/tickets/7c9e6679-7425-40de-944b-e07fc1f90ae7/reclasificacion
+                correlationId: a8e1b2c3-0000-4000-8000-000000000000
+
+  /health:
+    get:
+      tags: [Health]
+      summary: Estado del servicio
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: El servicio esta arriba
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: UP
+                  service:
+                    type: string
+                    example: ticket-service
+                  version:
+                    type: string
+                    example: 0.1.0
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token de POST /api/auth/login (user-service). Lo valida el gateway.
+
+  parameters:
+    TicketId:
+      name: id
+      in: path
+      required: true
+      description: Id del ticket (UUID)
+      schema:
+        type: string
+        format: uuid
+        example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+
+  responses:
+    Validacion:
+      description: VALIDACION - body, parametros o headers invalidos
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: VALIDACION
+            mensaje: El pedido tiene datos invalidos
+            detalles:
+              - campo: titulo
+                mensaje: debe tener entre 5 y 120 caracteres
+            timestamp: '2026-10-05T14:03:11Z'
+            path: /api/tickets
+            correlationId: a8e1b2c3-0000-4000-8000-000000000000
+    NoEncontrado:
+      description: NO_ENCONTRADO - el ticket no existe (o el solicitante no puede verlo)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: NO_ENCONTRADO
+            mensaje: No existe el ticket 7c9e6679-7425-40de-944b-e07fc1f90ae7
+            timestamp: '2026-10-05T14:03:11Z'
+            path: /api/tickets/7c9e6679-7425-40de-944b-e07fc1f90ae7
+            correlationId: a8e1b2c3-0000-4000-8000-000000000000
+    TransicionInvalida:
+      description: TRANSICION_INVALIDA - el estado actual no permite la operacion
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: TRANSICION_INVALIDA
+            mensaje: 'No se puede asignar un ticket en estado CERRADO: solo en CLASIFICADO o ESCALADO'
+            detalles:
+              - campo: estado
+                mensaje: transición no permitida
+            timestamp: '2026-10-05T14:03:11Z'
+            path: /api/tickets/7c9e6679-7425-40de-944b-e07fc1f90ae7/asignacion
+            correlationId: a8e1b2c3-0000-4000-8000-000000000000
+
+  schemas:
+    Categoria:
+      type: string
+      enum: [INCIDENTE, SOLICITUD, CONSULTA, BUG]
+    Urgencia:
+      type: string
+      enum: [ALTA, MEDIA, BAJA]
+    Impacto:
+      type: string
+      enum: [ALTO, MEDIO, BAJO]
+    Prioridad:
+      type: string
+      enum: [P1, P2, P3, P4]
+    EstadoTicket:
+      type: string
+      enum: [NUEVO, PENDIENTE_CLASIFICACION, CLASIFICADO, ASIGNADO, EN_CURSO, ESCALADO, RESUELTO, CERRADO]
+    ModuloAfectado:
+      type: string
+      enum: [AUTENTICACION, FACTURACION, PAGOS, REPORTES, INFRAESTRUCTURA, BASE_DE_DATOS, INTEGRACIONES, OTRO]
+
+    CrearTicketRequest:
+      type: object
+      required: [titulo, descripcion]
+      properties:
+        titulo:
+          type: string
+          minLength: 5
+          maxLength: 120
+        descripcion:
+          type: string
+          minLength: 10
+          maxLength: 2000
+
+    AsignarTicketRequest:
+      type: object
+      required: [agenteId]
+      properties:
+        agenteId:
+          type: string
+          format: uuid
+
+    CambiarEstadoRequest:
+      type: object
+      required: [estado]
+      properties:
+        estado:
+          $ref: '#/components/schemas/EstadoTicket'
+        motivo:
+          type: string
+          maxLength: 500
+          description: Obligatorio solo si estado es ESCALADO. Largo maximo propuesto por P2 (pendiente de acordar).
+
+    Clasificacion:
+      type: object
+      description: Lo que sugirio la IA. No incluye la prioridad.
+      required: [categoria, urgencia, impacto, moduloAfectado, requiereEscalamiento, confianza, fecha]
+      properties:
+        categoria:
+          $ref: '#/components/schemas/Categoria'
+        urgencia:
+          $ref: '#/components/schemas/Urgencia'
+        impacto:
+          $ref: '#/components/schemas/Impacto'
+        moduloAfectado:
+          $ref: '#/components/schemas/ModuloAfectado'
+        requiereEscalamiento:
+          type: boolean
+        confianza:
+          type: number
+          minimum: 0
+          maximum: 1
+        justificacion:
+          type: string
+          maxLength: 300
+        proveedor:
+          type: string
+          example: mock
+        fecha:
+          type: string
+          format: date-time
+
+    Ticket:
+      type: object
+      required: [id, titulo, descripcion, solicitanteId, estado, requiereRevisionManual, fechaCreacion, fechaActualizacion]
+      properties:
+        id:
+          type: string
+          format: uuid
+        titulo:
+          type: string
+        descripcion:
+          type: string
+        solicitanteId:
+          type: string
+          format: uuid
+        agenteAsignadoId:
+          type: string
+          format: uuid
+          nullable: true
+        estado:
+          $ref: '#/components/schemas/EstadoTicket'
+        prioridad:
+          allOf:
+            - $ref: '#/components/schemas/Prioridad'
+          nullable: true
+          description: La calcula el dominio. null si el ticket no esta clasificado.
+        fechaLimiteSla:
+          type: string
+          format: date-time
+          nullable: true
+          description: Fecha de clasificacion + 1/4/8/24 h segun la prioridad. null si no esta clasificado.
+        requiereRevisionManual:
+          type: boolean
+          description: true si la confianza de la IA fue menor a 0.6
+        motivoEscalamiento:
+          type: string
+          nullable: true
+          example: Prioridad P1
+        clasificacion:
+          allOf:
+            - $ref: '#/components/schemas/Clasificacion'
+          nullable: true
+        fechaCreacion:
+          type: string
+          format: date-time
+        fechaActualizacion:
+          type: string
+          format: date-time
+
+    PaginaTicket:
+      type: object
+      required: [content, page, size, totalElements, totalPages]
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ticket'
+        page:
+          type: integer
+          example: 0
+        size:
+          type: integer
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          example: 57
+        totalPages:
+          type: integer
+          example: 3
+
+    Error:
+      type: object
+      description: Formato comun de error (seccion 5.3)
+      required: [codigo, mensaje, timestamp, path, correlationId]
+      properties:
+        codigo:
+          type: string
+          enum: [VALIDACION, NO_ENCONTRADO, TRANSICION_INVALIDA, REGLA_DE_NEGOCIO, IA_NO_DISPONIBLE, ERROR_INTERNO]
+        mensaje:
+          type: string
+        detalles:
+          type: array
+          description: Solo en errores de validacion y de transicion
+          items:
+            type: object
+            properties:
+              campo:
+                type: string
+              mensaje:
+                type: string
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+        correlationId:
+          type: string
+
+  examples:
+    TicketEscalado:
+      summary: Caso critico de la demo (P1, ESCALADO)
+      value:
+        id: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        titulo: No puede ingresar nadie
+        descripcion: Producción caída, todos los usuarios bloqueados en el login desde las 9
+        solicitanteId: b1c2d3e4-0000-4000-8000-000000000004
+        agenteAsignadoId: null
+        estado: ESCALADO
+        prioridad: P1
+        fechaLimiteSla: '2026-10-05T15:03:11Z'
+        requiereRevisionManual: false
+        motivoEscalamiento: Prioridad P1
+        clasificacion:
+          categoria: INCIDENTE
+          urgencia: ALTA
+          impacto: ALTO
+          moduloAfectado: AUTENTICACION
+          requiereEscalamiento: true
+          confianza: 0.93
+          justificacion: Caída total del login en producción que afecta a todos los usuarios
+          proveedor: mock
+          fecha: '2026-10-05T14:03:11Z'
+        fechaCreacion: '2026-10-05T14:03:10Z'
+        fechaActualizacion: '2026-10-05T14:03:11Z'
+    TicketPendiente:
+      summary: La IA no respondio (PENDIENTE_CLASIFICACION)
+      value:
+        id: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        titulo: No puede ingresar nadie
+        descripcion: Producción caída, todos los usuarios bloqueados en el login desde las 9
+        solicitanteId: b1c2d3e4-0000-4000-8000-000000000004
+        agenteAsignadoId: null
+        estado: PENDIENTE_CLASIFICACION
+        prioridad: null
+        fechaLimiteSla: null
+        requiereRevisionManual: false
+        motivoEscalamiento: null
+        clasificacion: null
+        fechaCreacion: '2026-10-05T14:03:10Z'
+        fechaActualizacion: '2026-10-05T14:03:10Z'

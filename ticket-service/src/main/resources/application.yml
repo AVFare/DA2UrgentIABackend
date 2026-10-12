@@ -1,0 +1,62 @@
+server:
+  port: 8081
+  # Respeta los X-Forwarded-* del gateway: asi el Swagger unificado arma bien las URLs
+  # y "Try it out" pasa por http://localhost:8080 (seccion 18 del contexto).
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: ticket-service
+  main:
+    banner-mode: "off"
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/tickets_db}
+    username: ${DB_USER:tickets_user}
+    # Sin valor por defecto a proposito: la contraseña llega solo por variable de entorno.
+    password: ${DB_PASSWORD}
+    hikari:
+      # La transaccion recien toma una conexion cuando la necesita: mientras se espera
+      # a la IA (hasta 7 s) no se ocupa ninguna conexion del pool.
+      auto-commit: false
+  jpa:
+    open-in-view: false
+    # El esquema lo maneja Flyway (src/main/resources/db/migration).
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        connection:
+          provider_disables_autocommit: true
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+
+# Una linea JSON por evento: timestamp, level, service, correlationId, message.
+logging:
+  structured:
+    format:
+      console: com.urgentia.ticket.infrastructure.config.LogJsonFormatter
+  level:
+    root: ${LOG_LEVEL:INFO}
+
+# Lo informa GET /health. Mantener igual que <version> del pom.xml.
+servicio:
+  version: 0.1.0
+
+# Llamada a la IA (seccion 9.2).
+clasificacion:
+  url: ${CLASSIFICATION_URL:http://localhost:8082}
+  timeout-ms: ${CLASSIFICATION_TIMEOUT_MS:7000}
+
+# Envio de eventos (seccion 10.3). EVENT_SUBSCRIBERS: URLs separadas por coma.
+eventos:
+  suscriptores: ${EVENT_SUBSCRIBERS:}
+  reintentos-ms: 1000,2000,4000
+  timeout-ms: 5000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

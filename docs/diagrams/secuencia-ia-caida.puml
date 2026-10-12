@@ -1,0 +1,53 @@
+@startuml secuencia-ia-caida
+title UrgentIA - Crear un ticket con la IA caída y reclasificarlo
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+autonumber
+
+actor "Solicitante" as S
+actor "Agente" as A
+participant "api-gateway\n:8080" as GW
+participant "ticket-service\n:8081" as T
+participant "classification-service\n:8082" as C
+participant "reporting-service\n:8085" as R
+database "tickets_db" as TDB
+
+== Alta con la IA no disponible ==
+
+S -> GW : POST /api/tickets (Bearer JWT)
+GW -> T : POST /api/tickets\n+ X-User-Id, X-User-Rol, X-Correlation-Id
+T -> T : TicketFactory.crear() → NUEVO\n(registra TicketCreado)
+T -> C : POST /api/clasificaciones (timeout 7 s)
+C --x T : error, 5xx, timeout\no respuesta que no cumple el contrato
+T -> T : ClasificacionNoDisponibleException\n→ marcarPendienteDeClasificacion()\nestado PENDIENTE_CLASIFICACION, sin prioridad ni SLA
+T -> TDB : guardar
+T --> GW : 201 Ticket (PENDIENTE_CLASIFICACION)
+GW --> S : 201
+note right of T
+  La creación nunca falla por culpa de la IA.
+end note
+T ->> R : POST /api/eventos (TicketCreado), después del commit
+note right of R
+  notification-service también lo recibe
+  y responde IGNORADO.
+end note
+
+== Reclasificación manual (rol AGENTE o ADMIN) ==
+
+A -> GW : POST /api/tickets/{id}/reclasificacion
+GW -> T : POST /api/tickets/{id}/reclasificacion
+T -> C : POST /api/clasificaciones (timeout 7 s)
+alt La IA responde bien
+  C --> T : 200 Clasificacion
+  T -> T : aplicarClasificacion(): matriz, SLA\n→ CLASIFICADO (registra TicketClasificado)\n[si es P1 o crítico: ESCALADO + TicketEscalado]
+  T -> TDB : guardar
+  T --> GW : 200 Ticket
+  GW --> A : 200
+  T ->> R : POST /api/eventos (TicketClasificado [+ TicketEscalado])
+else La IA sigue caída
+  C --x T : error o timeout
+  T --> GW : 503 IA_NO_DISPONIBLE (el ticket no cambia)
+  GW --> A : 503
+end
+@enduml

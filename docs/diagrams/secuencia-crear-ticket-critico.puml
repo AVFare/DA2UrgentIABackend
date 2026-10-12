@@ -1,0 +1,55 @@
+@startuml secuencia-crear-ticket-critico
+title UrgentIA - Crear un ticket crítico (IA disponible)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+autonumber
+
+actor "Solicitante" as S
+participant "api-gateway\n:8080" as GW
+participant "ticket-service\n:8081" as T
+participant "classification-service\n:8082" as C
+participant "Proveedor LLM\n(externo)" as LLM
+participant "notification-service\n:8084" as N
+participant "reporting-service\n:8085" as R
+database "tickets_db" as TDB
+
+S -> GW : POST /api/tickets (Bearer JWT)
+GW -> GW : CorrelationIdFilter, JwtAuthFilter,\nRoleAuthorizationFilter
+GW -> T : POST /api/tickets\n+ X-User-Id, X-User-Rol, X-Correlation-Id
+
+group Transacción del caso de uso (CrearTicketService)
+  T -> T : TicketFactory.crear() → Ticket en NUEVO\n(registra TicketCreado)
+  T -> C : POST /api/clasificaciones (timeout 7 s)
+  C -> C : ClasificacionFacade:\nenmascarar email/teléfono/DNI → armar prompt
+  C -> LLM : chat/completions (timeout 5 s)
+  LLM --> C : JSON con categoría, urgencia, impacto,\nmódulo, requiereEscalamiento, confianza
+  C -> C : validar respuesta (ACL)\n[1 reintento si es inválida y queda tiempo]
+  C -> C : guardar en classification_db
+  C --> T : 200 Clasificacion
+  T -> T : ClasificacionTraductor (ACL) → Clasificacion del dominio
+  T -> T : aplicarClasificacion(): MatrizItilStrategy → P1, SLA 1 h\n(registra TicketClasificado)
+  T -> T : P1 o requiereEscalamiento → escalar()\nestado ESCALADO (registra TicketEscalado)
+  T -> TDB : guardar
+end
+T --> GW : 201 Ticket (P1, ESCALADO)
+GW --> S : 201
+
+== Después del commit: ReenvioDeEventosListener (AFTER_COMMIT) → HttpEventSender (asíncrono) ==
+
+par Por cada evento: TicketCreado, TicketClasificado, TicketEscalado
+  T ->> N : POST /api/eventos (sobre estándar)
+  N -> N : idempotencia por eventId (eventos_procesados)
+  N -> N : TicketEscalado → notificación EMAIL_SIMULADO a GUARDIA\n(los otros dos: IGNORADO)
+  N -->> T : 202
+else
+  T ->> R : POST /api/eventos (sobre estándar)
+  R -> R : idempotencia por eventId → proyector del tipo\n→ upsert en ticket_view
+  R -->> T : 202
+end
+
+note over T, R
+  Reintentos de envío: 3 (1 s, 2 s, 4 s). Si fallan todos, log ERROR con el eventId.
+  Un 4xx no se reintenta.
+end note
+@enduml

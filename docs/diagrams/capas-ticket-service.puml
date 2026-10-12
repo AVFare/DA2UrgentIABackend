@@ -1,0 +1,45 @@
+@startuml capas-ticket-service
+title UrgentIA - ticket-service: arquitectura hexagonal (puertos y adaptadores)
+
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam rectangle {
+  RoundCorner 8
+}
+left to right direction
+
+actor "api-gateway\n(JWT -> X-User-Id,\nX-User-Rol)" as gw
+
+rectangle "**Adaptadores de entrada**\n(infrastructure.rest)\n\nCorrelationIdFilter\nTicketController\nGlobalExceptionHandler\nHealthController" as entrada #E3F2FD
+
+rectangle "**Puertos de entrada**\n(application.port.in)\n\nCrearTicketUseCase\nAsignarTicketUseCase\nCambiarEstadoUseCase\nReclasificarTicketUseCase\nConsultarTicketsUseCase" as pin #FFF3E0
+
+rectangle "**Aplicacion** (sin Spring)\n(application.service)\n\nCrearTicketService\nAsignarTicketService\nCambiarEstadoService\nReclasificarTicketService\nConsultarTicketsService\n\n<i>orquestan, no deciden</i>" as app #FFF3E0
+
+rectangle "**Dominio** (Java puro)\n(domain)\n\nTicket (Aggregate Root)\nClasificacion, Sla, TicketId (Value Objects)\nPrioridadStrategy / MatrizItilStrategy\nTicketFactory\nDomainEvent (TicketCreado, ...)\n\n<i>aca viven las reglas de la seccion 8</i>" as dom #E8F5E9
+
+rectangle "**Puertos de salida**\n(application.port.out)\n\nTicketRepository\nClasificadorPort\nEventPublisherPort" as pout #FFF3E0
+
+rectangle "**Adaptadores de salida**\n(infrastructure)\n\nJpaTicketRepositoryAdapter (persistence)\nClassificationHttpClient + ACL (client)\nSpringEventPublisherAdapter (messaging)\nReenvioDeEventosListener (AFTER_COMMIT)\nHttpEventSender (reintentos 1-2-4 s)" as salida #E3F2FD
+
+database "PostgreSQL\ntickets_db" as db
+node "classification-service\n:8082" as ia
+node "notification-service :8084\nreporting-service :8085" as subs
+
+gw --> entrada : HTTP
+entrada --> pin : llama
+pin --> app : implementan\n(con una transaccion\npor caso de uso)
+app --> dom : usa
+app --> pout : usa
+salida ..> pout : implementan
+salida --> db : JPA + Flyway
+salida --> ia : POST /api/clasificaciones\n(timeout 7 s)
+salida --> subs : POST /api/eventos\n(despues del commit)
+
+note bottom of dom
+  Las dependencias apuntan hacia adentro:
+  infrastructure -> application -> domain.
+  El dominio no conoce Spring, JPA ni HTTP
+  (lo controla DominioSinFrameworksTest).
+end note
+@enduml

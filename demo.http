@@ -1,0 +1,222 @@
+# UrgentIA - Demo de la Defensa 1 (cliente HTTP de IntelliJ IDEA)
+#
+# Antes de empezar, desde la raiz del repositorio:
+#   cp .env.example .env
+#   docker compose up -d --build --wait
+#
+# Ejecutar los pedidos en orden, de arriba hacia abajo: cada uno guarda lo que usa el
+# siguiente (tokens e id del ticket). Todo entra por el api-gateway, que es el unico
+# puerto publicado. El flujo principal espera LLM_PROVIDER=mock (valor de .env.example).
+
+
+### 0. El gateway responde (ruta publica, sin token)
+GET http://localhost:8080/health
+
+> {%
+    client.test("El gateway esta arriba", function () {
+        client.assert(response.status === 200, "Se esperaba 200");
+        client.assert(response.body.status === "UP", "Se esperaba status UP");
+    });
+%}
+
+
+### 1. Login del solicitante
+POST http://localhost:8080/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "solicitante@urgentia.local",
+  "password": "Usuario123!"
+}
+
+> {%
+    client.test("Login del solicitante", function () {
+        client.assert(response.status === 200, "Se esperaba 200");
+        client.assert(response.body.usuario.rol === "SOLICITANTE", "Se esperaba rol SOLICITANTE");
+    });
+    client.global.set("tokenSolicitante", response.body.accessToken);
+%}
+
+
+### 2. El solicitante crea un ticket critico: vuelve P1 y ESCALADO
+POST http://localhost:8080/api/tickets
+Authorization: Bearer {{tokenSolicitante}}
+Content-Type: application/json
+
+{
+  "titulo": "No puede ingresar nadie",
+  "descripcion": "Producción caída, todos los usuarios bloqueados en el login desde las 9"
+}
+
+> {%
+    client.test("Ticket creado, P1 y escalado", function () {
+        client.assert(response.status === 201, "Se esperaba 201");
+        client.assert(response.body.prioridad === "P1", "Se esperaba P1 (revisar LLM_PROVIDER=mock)");
+        client.assert(response.body.estado === "ESCALADO", "Se esperaba ESCALADO");
+    });
+    client.global.set("ticketId", response.body.id);
+%}
+
+
+### 3. Login del agente de guardia
+POST http://localhost:8080/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "guardia@urgentia.local",
+  "password": "Agente123!"
+}
+
+> {%
+    client.test("Login del agente", function () {
+        client.assert(response.status === 200, "Se esperaba 200");
+        client.assert(response.body.usuario.rol === "AGENTE", "Se esperaba rol AGENTE");
+    });
+    client.global.set("tokenAgente", response.body.accessToken);
+%}
+
+
+### 4. El agente consulta el ticket; el gateway devuelve el mismo X-Correlation-Id
+GET http://localhost:8080/api/tickets/{{ticketId}}
+Authorization: Bearer {{tokenAgente}}
+X-Correlation-Id: 11111111-1111-4111-8111-111111111111
+
+> {%
+    client.test("Ticket encontrado y correlacion propagada", function () {
+        client.assert(response.status === 200, "Se esperaba 200");
+        client.assert(
+            response.headers.valueOf("X-Correlation-Id") === "11111111-1111-4111-8111-111111111111",
+            "El gateway debe devolver el X-Correlation-Id recibido");
+    });
+%}
+
+
+### 5. Notificacion a la guardia
+# Los eventos se entregan de forma asincronica: si la lista viene vacia, repetir el pedido.
+GET http://localhost:8080/api/notificaciones?ticketId={{ticketId}}&size=100
+Authorization: Bearer {{tokenAgente}}
+
+> {%
+    client.test("Se notifico el escalamiento a la guardia", function () {
+        client.assert(response.status === 200, "Se esperaba 200");
+        var notificada = response.body.content.some(function (n) {
+            return n.tipoEvento === "TicketEscalado" && n.destinatario === "GRUPO:GUARDIA";
+        });
+        client.assert(notificada, "Falta la notificacion TicketEscalado a GRUPO:GUARDIA (repetir el pedido)");
+    });
+%}
+
+
+### 6. El ticket aparece en la vista de reportes
+GET http://localhost:8080/api/reportes/tickets?prioridad=P1&estado=ESCALADO&size=100
+Authorization: Bearer {{tokenAgente}}
+
+> {%
+    client.test("El ticket esta proyectado en reportes", function () {
+        client.assert(response.status === 200, "Se esperaba 200");
+        var proyectado = response.body.content.some(function (v) {
+            return v.ticketId === client.global.get("ticketId");
+        });
+        client.assert(proyectado, "El ticket todavia no aparece en reportes (repetir el pedido)");
+    });
+%}
+
+
+### 7. Resumen de reportes
+GET http://localhost:8080/api/reportes/resumen
+Authorization: Bearer {{tokenAgente}}
+
+> {%
+    client.test("El resumen cuenta el escalado", function () {
+        client.assert(response.status === 200, "Se esperaba 200");
+        client.assert(response.body.escalados >= 1, "Se esperaba al menos un escalado");
+        client.assert(response.body.porPrioridad.P1 >= 1, "Se esperaba al menos un P1");
+    });
+%}
+
+
+### 8. Cumplimiento de SLA
+GET http://localhost:8080/api/reportes/sla
+Authorization: Bearer {{tokenAgente}}
+
+> {%
+    client.test("Reporte de SLA", function () {
+        client.assert(response.status === 200, "Se esperaba 200");
+    });
+%}
+
+
+### 9. Control del gateway: sin token responde 401
+GET http://localhost:8080/api/tickets
+
+> {%
+    client.test("Sin token: 401 NO_AUTENTICADO", function () {
+        client.assert(response.status === 401, "Se esperaba 401");
+        client.assert(response.body.codigo === "NO_AUTENTICADO", "Se esperaba NO_AUTENTICADO");
+    });
+%}
+
+
+### 10. Control del gateway: token invalido responde 401
+GET http://localhost:8080/api/tickets
+Authorization: Bearer esto-no-es-un-token
+
+> {%
+    client.test("Token invalido: 401 NO_AUTENTICADO", function () {
+        client.assert(response.status === 401, "Se esperaba 401");
+        client.assert(response.body.codigo === "NO_AUTENTICADO", "Se esperaba NO_AUTENTICADO");
+    });
+%}
+
+
+### 11. Control del gateway: un solicitante no puede ver reportes, responde 403
+GET http://localhost:8080/api/reportes/resumen
+Authorization: Bearer {{tokenSolicitante}}
+
+> {%
+    client.test("Rol insuficiente: 403 SIN_PERMISO", function () {
+        client.assert(response.status === 403, "Se esperaba 403");
+        client.assert(response.body.codigo === "SIN_PERMISO", "Se esperaba SIN_PERMISO");
+    });
+%}
+
+
+# ---------------------------------------------------------------------------------------
+# Caso de fallback: la IA no responde. Se ejecuta a mano, despues del flujo principal.
+#
+#   1) En una terminal:  docker compose stop classification-service
+#   2) Ejecutar F1: el ticket se crea igual y queda PENDIENTE_CLASIFICACION.
+#   3) En una terminal:  docker compose start classification-service
+#      y esperar a que figure "healthy" en  docker compose ps
+#   4) Ejecutar F2: el ticket pasa a CLASIFICADO con su prioridad.
+# ---------------------------------------------------------------------------------------
+
+### F1. Crear un ticket con la IA apagada
+POST http://localhost:8080/api/tickets
+Authorization: Bearer {{tokenSolicitante}}
+Content-Type: application/json
+
+{
+  "titulo": "Error al exportar el reporte mensual",
+  "descripcion": "Al exportar el reporte mensual a Excel aparece un error y no se descarga el archivo"
+}
+
+> {%
+    client.test("El ticket se crea aunque la IA no responda", function () {
+        client.assert(response.status === 201, "Se esperaba 201");
+    });
+    client.log("Estado del ticket: " + response.body.estado);
+    client.global.set("ticketPendienteId", response.body.id);
+%}
+
+
+### F2. El agente reclasifica el ticket con la IA otra vez arriba
+POST http://localhost:8080/api/tickets/{{ticketPendienteId}}/reclasificacion
+Authorization: Bearer {{tokenAgente}}
+
+> {%
+    client.test("Ticket reclasificado", function () {
+        client.assert(response.status === 200, "Se esperaba 200");
+    });
+    client.log("Estado: " + response.body.estado + " - Prioridad: " + response.body.prioridad);
+%}

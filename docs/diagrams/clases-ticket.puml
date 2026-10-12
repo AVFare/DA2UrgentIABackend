@@ -1,0 +1,203 @@
+@startuml clases-ticket
+title UrgentIA - ticket-service: modelo de dominio (paquete domain, Java puro)
+
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam linetype ortho
+hide empty members
+
+package "domain.model" {
+  class Ticket <<Aggregate Root>> {
+    - id : TicketId
+    - titulo : String
+    - descripcion : String
+    - solicitanteId : UUID
+    - agenteAsignadoId : UUID
+    - estado : EstadoTicket
+    - prioridad : Prioridad
+    - sla : Sla
+    - clasificacion : Clasificacion
+    - requiereRevisionManual : boolean
+    - motivoEscalamiento : String
+    - fechaCreacion : Instant
+    - fechaActualizacion : Instant
+    - version : Long
+    - eventos : List<DomainEvent>
+    --
+    + {static} crear(id, titulo, descripcion, solicitanteId, ahora) : Ticket
+    + {static} reconstituir(...) : Ticket
+    + aplicarClasificacion(c : Clasificacion, estrategia : PrioridadStrategy, ahora)
+    + marcarPendienteDeClasificacion(ahora)
+    + asignarA(agenteId : UUID, ahora)
+    + cambiarEstado(destino : EstadoTicket, motivo : String, ahora)
+    + iniciar(ahora)
+    + escalar(motivo : String, ahora)
+    + resolver(ahora)
+    + cerrar(ahora)
+    + reabrir(ahora)
+    + slaVencido(ahora) : boolean
+    + extraerEventos() : List<DomainEvent>
+  }
+
+  class TicketId <<Value Object>> {
+    + valor : UUID
+  }
+
+  class Clasificacion <<Value Object>> {
+    + categoria : Categoria
+    + urgencia : Urgencia
+    + impacto : Impacto
+    + moduloAfectado : ModuloAfectado
+    + requiereEscalamiento : boolean
+    + confianza : double [0..1]
+    + justificacion : String
+    + proveedor : String
+    + fecha : Instant
+    --
+    + requiereRevisionManual() : boolean  ' confianza < 0.6
+  }
+
+  class Sla <<Value Object>> {
+    + prioridad : Prioridad
+    + fechaLimite : Instant
+    --
+    + {static} calcular(prioridad, fechaClasificacion) : Sla
+    + vencidoA(ahora) : boolean
+  }
+
+  enum EstadoTicket {
+    NUEVO
+    PENDIENTE_CLASIFICACION
+    CLASIFICADO
+    ASIGNADO
+    EN_CURSO
+    ESCALADO
+    RESUELTO
+    CERRADO
+    --
+    + puedePasarA(destino) : boolean
+    + estaAbierto() : boolean
+  }
+
+  enum Prioridad {
+    P1 (1 h)
+    P2 (4 h)
+    P3 (8 h)
+    P4 (24 h)
+  }
+
+  enum Categoria {
+    INCIDENTE
+    SOLICITUD
+    CONSULTA
+    BUG
+  }
+  enum Urgencia {
+    ALTA
+    MEDIA
+    BAJA
+  }
+  enum Impacto {
+    ALTO
+    MEDIO
+    BAJO
+  }
+  enum ModuloAfectado {
+    AUTENTICACION
+    FACTURACION
+    PAGOS
+    REPORTES
+    INFRAESTRUCTURA
+    BASE_DE_DATOS
+    INTEGRACIONES
+    OTRO
+  }
+}
+
+package "domain.service" {
+  interface PrioridadStrategy <<Strategy>> {
+    + calcular(urgencia, impacto) : Prioridad
+  }
+  class MatrizItilStrategy {
+    + calcular(urgencia, impacto) : Prioridad
+  }
+}
+
+package "domain.factory" {
+  class TicketFactory <<Factory>> {
+    - reloj : Clock
+    + crear(titulo, descripcion, solicitanteId) : Ticket
+  }
+}
+
+package "domain.event" {
+  interface DomainEvent <<Domain Event>> {
+    + eventId() : UUID
+    + occurredAt() : Instant
+    + ticket() : TicketSnapshot
+    + tipo() : String
+  }
+  class TicketSnapshot <<record>>
+  class TicketCreado <<record>>
+  class TicketClasificado <<record>>
+  class TicketEscalado <<record>> {
+    + estadoAnterior : EstadoTicket
+    + motivo : String
+  }
+  class TicketAsignado <<record>>
+  class TicketEstadoCambiado <<record>> {
+    + estadoAnterior : EstadoTicket
+  }
+  class TicketResuelto <<record>> {
+    + estadoAnterior : EstadoTicket
+  }
+}
+
+package "domain.exception" {
+  class TransicionInvalidaException
+  class ReglaDeNegocioException
+}
+
+Ticket *-- "1" TicketId
+Ticket *-- "0..1" Clasificacion
+Ticket *-- "0..1" Sla
+Ticket --> EstadoTicket
+Ticket --> Prioridad
+Ticket o-- "0..*" DomainEvent : registra >
+Ticket ..> PrioridadStrategy : usa al clasificar
+Ticket ..> TransicionInvalidaException : lanza
+Ticket ..> ReglaDeNegocioException : lanza
+
+Clasificacion --> Categoria
+Clasificacion --> Urgencia
+Clasificacion --> Impacto
+Clasificacion --> ModuloAfectado
+Sla --> Prioridad
+
+MatrizItilStrategy .up.|> PrioridadStrategy
+TicketFactory ..> Ticket : crea
+
+TicketCreado .up.|> DomainEvent
+TicketClasificado .up.|> DomainEvent
+TicketEscalado .up.|> DomainEvent
+TicketAsignado .up.|> DomainEvent
+TicketEstadoCambiado .up.|> DomainEvent
+TicketResuelto .up.|> DomainEvent
+DomainEvent --> TicketSnapshot
+
+note right of Ticket
+  Sin setters: el estado cambia solo con los
+  metodos de negocio, que validan la transicion
+  y registran los eventos de la seccion 8.5.
+  La IA sugiere (Clasificacion);
+  el dominio decide (Prioridad, Sla, escalamiento).
+end note
+
+note bottom of MatrizItilStrategy
+  Urgencia \ Impacto | ALTO | MEDIO | BAJO
+  ALTA               |  P1  |  P2   |  P3
+  MEDIA              |  P2  |  P3   |  P4
+  BAJA               |  P3  |  P4   |  P4
+end note
+@enduml

@@ -1,0 +1,7 @@
+.venv/
+**/__pycache__/
+.pytest_cache/
+tests/
+scripts/
+requirements-dev.txt
+*.md

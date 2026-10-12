@@ -1,0 +1,9 @@
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[lint.flake8-bugbear]
+# Idioma de FastAPI: Depends/Body/Query en los argumentos por defecto.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Body", "fastapi.Query"]

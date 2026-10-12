@@ -1,0 +1,71 @@
+{
+  "name": "reporting-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Proyecciones CQRS y reportes de UrgentIA",
+  "engines": {
+    "node": ">=20 <21"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "start:dev": "node --watch --require ts-node/register src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "jest --runInBand && node --test scripts/verificar-integracion.test.cjs",
+    "test:watch": "jest --watch",
+    "test:cov": "jest --runInBand --coverage",
+    "test:e2e": "jest --config test/jest-e2e.json --runInBand",
+    "format:check": "prettier --check src test scripts *.json *.md *.yml",
+    "format": "prettier --write src test scripts *.json *.md *.yml",
+    "demo": "npm run build && node scripts/demo.cjs",
+    "verificar:demo": "npm run build && node scripts/demo.cjs --verificar",
+    "verificar:integracion": "node scripts/verificar-integracion.cjs"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.0",
+    "@nestjs/core": "^11.1.0",
+    "@nestjs/mongoose": "^11.0.0",
+    "@nestjs/platform-express": "^11.1.0",
+    "@nestjs/swagger": "^11.2.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "mongoose": "^8.18.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "^12.0.0",
+    "@nestjs/testing": "^11.1.0",
+    "@types/express": "^5.0.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.19.0",
+    "@types/supertest": "^6.0.3",
+    "jest": "^30.5.2",
+    "mongodb-memory-server": "^10.2.0",
+    "prettier": "^3.6.0",
+    "supertest": "^7.1.0",
+    "ts-jest": "^29.4.0",
+    "typescript": "^5.9.0",
+    "yaml": "^2.8.0",
+    "ts-node": "^10.9.2"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": [
+      "<rootDir>/src/**/*.spec.ts"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/**/*.spec.ts",
+      "!src/main.ts",
+      "!src/**/*.module.ts"
+    ],
+    "coverageDirectory": "coverage"
+  },
+  "overrides": {
+    "@nestjs/swagger": {
+      "js-yaml": "^5.4.2"
+    }
+  }
+}
