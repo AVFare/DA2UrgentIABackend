@@ -28,6 +28,57 @@ entrada desde afuera.
 El detalle completo (contratos, enums, reglas de negocio, eventos) está en
 [`CONTEXTO_PROYECTO.md`](CONTEXTO_PROYECTO.md), que es la fuente de verdad técnica.
 
+### Arquitectura en capas
+
+![Arquitectura en capas](docs/diagrams/arquitectura-capas.png)
+
+### Diagramas
+
+Todos están en [`docs/diagrams/`](docs/diagrams), como fuente PlantUML (`.puml`) y como imagen (`.png`).
+
+| Diagrama | Archivo |
+|---|---|
+| Arquitectura en capas de la solución | [`arquitectura-capas`](docs/diagrams/arquitectura-capas.png) |
+| Componentes | [`componentes-reporting`](docs/diagrams/componentes-reporting.png) |
+| Despliegue (Docker Compose) | [`despliegue`](docs/diagrams/despliegue.png) |
+| Mapa de contextos (DDD estratégico) | [`context-map`](docs/diagrams/context-map.png) |
+| Proceso de atención de un ticket (BPMN simplificado) | [`bpmn-atencion-ticket`](docs/diagrams/bpmn-atencion-ticket.png) |
+| Secuencia: crear un ticket crítico | [`secuencia-crear-ticket-critico`](docs/diagrams/secuencia-crear-ticket-critico.png) |
+| Secuencia: IA caída y reclasificación | [`secuencia-ia-caida`](docs/diagrams/secuencia-ia-caida.png) |
+| Clases del dominio de tickets | [`clases-ticket`](docs/diagrams/clases-ticket.png) |
+| Estados del ticket | [`estados-ticket`](docs/diagrams/estados-ticket.png) |
+| Capas de ticket-service (hexagonal) | [`capas-ticket-service`](docs/diagrams/capas-ticket-service.png) |
+
+### Patrones aplicados
+
+Cada servicio documenta en su README, en la sección "Patrones aplicados", la clase o el archivo donde aplica cada patrón y qué problema resuelve.
+
+| Patrón | Dónde | Detalle |
+|---|---|---|
+| Factory / Factory Method | `TicketFactory` (ticket), `PlantillaFactory` (notification), `LlmProviderFactory` (classification) | [ticket](ticket-service/README.md#patrones-aplicados), [notification](notification-service/README.md#patrones-aplicados), [classification](classification-service/README.md#patrones-aplicados) |
+| Repository | Los cinco servicios con base de datos | Sección "Patrones aplicados" de cada README |
+| Strategy | `PrioridadStrategy` / `MatrizItilStrategy` (ticket), `LlmProvider` (classification), canales (notification), proyectores (reporting) | [ticket](ticket-service/README.md#patrones-aplicados), [classification](classification-service/README.md#patrones-aplicados), [notification](notification-service/README.md#patrones-aplicados), [reporting](reporting-service/README.md#patrones-aplicados) |
+| Observer | Eventos de dominio: `ticket-service` los publica; `notification-service` y `reporting-service` los consumen | [ticket](ticket-service/README.md#patrones-aplicados), [notification](notification-service/README.md#patrones-aplicados) |
+| Facade | `ClasificacionFacade` (classification) | [classification](classification-service/README.md#patrones-aplicados) |
+| Adapter / Anti-Corruption Layer | `ClassificationHttpClient` + `ClasificacionTraductor` (ticket), proveedores LLM y `response_parser` (classification) | [ticket](ticket-service/README.md#patrones-aplicados), [classification](classification-service/README.md#patrones-aplicados) |
+| Chain of Responsibility, Proxy | Filtros y ruteo del gateway | [api-gateway](api-gateway/README.md#patrones-aplicados) |
+| CQRS (lado de lectura) | `reporting-service` | [reporting](reporting-service/README.md#patrones-aplicados) |
+| Aggregate, Value Object, Domain Event, Decorator, Ports & Adapters | `ticket-service` | [ticket](ticket-service/README.md#patrones-aplicados) |
+
+### Decisiones de arquitectura
+
+Las decisiones están registradas como ADR en [`docs/adr/`](docs/adr):
+
+1. [Microservicios desde la primera entrega](docs/adr/ADR-01-microservicios.md)
+2. [Base de datos propia por servicio](docs/adr/ADR-02-base-de-datos-por-servicio.md)
+3. [Stack políglota](docs/adr/ADR-03-stack-poliglota.md)
+4. [PostgreSQL y MongoDB](docs/adr/ADR-04-postgresql-y-mongodb.md)
+5. [API Gateway como única entrada](docs/adr/ADR-05-api-gateway.md)
+6. [Clasificación por REST con timeout y fallback](docs/adr/ADR-06-clasificacion-rest-con-fallback.md)
+7. [Eventos de dominio por HTTP con sobre estándar](docs/adr/ADR-07-eventos-por-http.md)
+8. [Hexagonal y DDD táctico solo en el Core](docs/adr/ADR-08-hexagonal-solo-en-el-core.md)
+9. [Contract-first](docs/adr/ADR-09-contract-first.md)
+
 ## Cómo ejecutar
 
 Hace falta Docker Desktop y Git. No hace falta instalar Java, Python ni Node.
