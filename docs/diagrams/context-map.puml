@@ -1,0 +1,33 @@
+@startuml context-map
+title UrgentIA - Mapa de contextos (DDD estratégico)
+
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam rectangle {
+  RoundCorner 12
+}
+left to right direction
+
+rectangle "**Gestión de tickets**\n<<Core Domain>>\nticket-service\nTicket, prioridad, SLA, estados, escalamiento" as T #FFE8CC
+rectangle "**Identidad y acceso**\n<<Subdominio de soporte>>\nuser-service\nUsuarios, roles, login, JWT" as U
+rectangle "**Clasificación con IA**\n<<Subdominio de soporte>>\nclassification-service\nModel as a Service" as C
+rectangle "**Notificaciones**\n<<Subdominio de soporte>>\nnotification-service" as N
+rectangle "**Reportes**\n<<Subdominio de soporte>>\nreporting-service\nlado de lectura (CQRS)" as R
+rectangle "**api-gateway**\nentrada única" as GW
+cloud "**Proveedor LLM**\n(externo: Groq / Ollama)" as LLM
+
+U --> GW : U: emite el JWT\n(claims del contrato)\nD: lo valida y propaga\nX-User-Id, X-User-Rol
+GW --> T : X-User-Id, X-User-Rol\n(Conformist: el Core usa\nla identidad tal como llega)
+C --> T : U: Customer/Supplier\nD: Anticorruption Layer\n(ClassificationHttpClient +\nClasificacionTraductor)
+LLM --> C : U: proveedor externo\nD: Anticorruption Layer\n(response_parser)
+T --> N : U: Published Language\n(sobre estándar de eventos)\nD: Conformist
+T --> R : U: Published Language\n(sobre estándar de eventos)\nD: Conformist
+
+legend right
+  U = upstream (define el modelo o el contrato)
+  D = downstream (lo consume)
+  Cada contexto es un servicio con su propia base de datos (ADR-01, ADR-02).
+  El Published Language es contracts/events/ticket-events.schema.json:
+  en la parte 2 viaja igual por el broker de mensajes (ADR-07).
+endlegend
+@enduml

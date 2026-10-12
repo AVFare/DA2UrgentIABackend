@@ -1,0 +1,128 @@
+@startuml arquitectura-capas
+title UrgentIA - Arquitectura en capas de la solución
+
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam packageStyle rectangle
+skinparam rectangle {
+  RoundCorner 8
+}
+skinparam nodesep 25
+skinparam ranksep 45
+
+package "Capa de presentación" as L0 {
+  actor "Cliente\nSwagger UI / Postman / demo.http" as cli
+}
+
+package "Capa de entrada: api-gateway (Spring Cloud Gateway, único puerto publicado)" as L1 {
+  rectangle "Filtros: CorrelationId → JWT → Rol\n(Chain of Responsibility)" as gwf
+  rectangle "Rutas y Swagger agregado\n(Proxy)" as gwr
+}
+
+package "Capa de API (controladores REST)" as L2 {
+  rectangle "user-service\nAuthController\nUsuarioController" as u2
+  rectangle "ticket-service\nTicketController" as t2
+  rectangle "classification-service\nroutes/clasificaciones" as c2
+  rectangle "notification-service\nendpoints/eventos\nendpoints/notificaciones" as n2
+  rectangle "reporting-service\nEventosController\nReportesController" as r2
+}
+
+package "Capa de servicios (lógica de aplicación)" as L3 {
+  rectangle "UsuarioService\nAuthService, JwtService" as u3
+  rectangle "Casos de uso (puertos de entrada)\nCrearTicketService, AsignarTicketService,\nCambiarEstadoService, ReclasificarTicketService,\nConsultarTicketsService" as t3
+  rectangle "ClasificacionFacade" as c3
+  rectangle "EventoService (reglas por evento)\nNotificacionService\ncanales, plantillas" as n3
+  rectangle "EventosService\nproyectores (uno por evento)\nReportesService" as r3
+}
+
+package "Capa de dominio / modelo" as L4 {
+  rectangle "Usuario, Rol" as u4
+  rectangle "Agregado Ticket, value objects,\nMatrizItilStrategy, TicketFactory,\neventos de dominio\n(Java puro, sin Spring)" as t4
+  rectangle "Modelos y enums\nde la clasificación" as c4
+  rectangle "Esquemas del sobre\ny de la notificación" as n4
+  rectangle "TicketView\n(modelo de lectura, CQRS)" as r4
+}
+
+package "Capa de acceso a datos e integración" as L5 {
+  rectangle "UsuarioRepository\n(Spring Data JPA)" as u5
+  rectangle "JpaTicketRepositoryAdapter\nClassificationHttpClient (ACL)\nHttpEventSender" as t5
+  rectangle "Repositorio Mongo\nproveedores LLM (Strategy)\nresponse_parser (ACL)" as c5
+  rectangle "Repositorios Mongo" as n5
+  rectangle "Repositorios Mongo" as r5
+}
+
+package "Capa de datos y servicios externos" as L6 {
+  database "PostgreSQL\nusers_db" as udb
+  database "PostgreSQL\ntickets_db" as tdb
+  database "MongoDB\nclassification_db" as cdb
+  database "MongoDB\nnotifications_db" as ndb
+  database "MongoDB\nreporting_db" as rdb
+  cloud "Proveedor LLM\n(Groq / Ollama)" as llm
+}
+
+cli --> gwf : HTTP + JWT
+gwf --> gwr
+gwr --> u2
+gwr --> t2
+gwr --> c2 : solo ADMIN
+gwr --> n2
+gwr --> r2
+
+u2 --> u3
+t2 --> t3
+c2 --> c3
+n2 --> n3
+r2 --> r3
+
+u3 --> u4
+t3 --> t4
+c3 --> c4
+n3 --> n4
+r3 --> r4
+
+u3 --> u5
+t3 --> t5 : puertos de salida
+c3 --> c5
+n3 --> n5
+r3 --> r5
+
+u5 --> udb
+t5 --> tdb
+c5 --> cdb
+c5 --> llm : HTTPS
+n5 --> ndb
+r5 --> rdb
+
+t5 ..> c2 : REST síncrono\n(timeout 7 s)
+t5 ..> n2 : eventos\nPOST /api/eventos
+t5 ..> r2 : eventos\nPOST /api/eventos
+
+' Orden de columnas y apilado de capas (enlaces invisibles)
+u2 -[hidden]r-> t2
+t2 -[hidden]r-> c2
+c2 -[hidden]r-> n2
+n2 -[hidden]r-> r2
+u3 -[hidden]r-> t3
+t3 -[hidden]r-> c3
+c3 -[hidden]r-> n3
+n3 -[hidden]r-> r3
+u4 -[hidden]r-> t4
+t4 -[hidden]r-> c4
+c4 -[hidden]r-> n4
+n4 -[hidden]r-> r4
+u5 -[hidden]r-> t5
+t5 -[hidden]r-> c5
+c5 -[hidden]r-> n5
+n5 -[hidden]r-> r5
+u4 -[hidden]d-> u5
+t4 -[hidden]d-> t5
+c4 -[hidden]d-> c5
+n4 -[hidden]d-> n5
+r4 -[hidden]d-> r5
+
+note bottom of L6
+  Cada servicio tiene su propia base de datos: ninguno lee tablas o colecciones de otro.
+  ticket-service es hexagonal (las capas de API y de acceso a datos son adaptadores de sus puertos);
+  el resto usa capas simples. El gateway expone /api/clasificaciones solo a ADMIN; en el flujo normal la llama ticket-service.
+end note
+@enduml

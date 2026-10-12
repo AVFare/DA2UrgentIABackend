@@ -1,0 +1,59 @@
+@startuml bpmn-atencion-ticket
+title UrgentIA - Proceso de atención de un ticket (BPMN simplificado)
+
+skinparam shadowing false
+skinparam ActivityBorderColor #444444
+skinparam ActivityDiamondBorderColor #444444
+
+|Solicitante|
+start
+:Cargar ticket en texto libre\n(título y descripción);
+
+|UrgentIA|
+:Crear ticket (NUEVO);
+:Clasificar con IA\n(categoría, urgencia, impacto, módulo);
+if (¿La IA respondió a tiempo\ny con un formato válido?) then (no)
+  :Dejar el ticket en\nPENDIENTE_CLASIFICACION;
+  |Agente / Guardia|
+  repeat
+    :Pedir reclasificación;
+    |UrgentIA|
+    :Clasificar con IA;
+  repeat while (¿La IA respondió?) is (no: 503, se reintenta más tarde)
+  -> sí;
+else (sí)
+endif
+:Calcular prioridad con la matriz ITIL\n(urgencia × impacto) y el SLA;
+if (¿P1 o marcado como\ncrítico por la IA?) then (sí)
+  :Escalar (ESCALADO);
+  :Notificar a la guardia\n(email simulado);
+  |Agente / Guardia|
+  :Asignarse el ticket;
+else (no)
+  |Agente / Guardia|
+  :Asignar el ticket (ASIGNADO);
+  |UrgentIA|
+  :Notificar al agente asignado\n(canal interno);
+endif
+
+|Agente / Guardia|
+:Tomar el ticket (EN_CURSO);
+repeat
+  :Trabajar el ticket;
+  :Resolver (RESUELTO);
+  |UrgentIA|
+  :Notificar al solicitante\n(email simulado);
+  |Agente / Guardia|
+repeat while (¿Hay que reabrirlo?) is (sí: EN_CURSO)
+-> no;
+:Cerrar (CERRADO);
+stop
+
+note right
+  Simplificaciones del modelo:
+  - Si la confianza de la IA es menor a 0,6, el ticket queda
+    marcado para revisión manual (no cambia el estado).
+  - Un agente puede escalar a mano un ticket ASIGNADO o EN_CURSO.
+  - En paralelo, reporting-service proyecta cada evento para los reportes.
+end note
+@enduml
