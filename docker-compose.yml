@@ -63,6 +63,40 @@ services:
       retries: 10
     networks: [urgentia-net]
 
+  # Un solo uso: carga la topologia de contracts/messaging/ (exchanges, colas y bindings)
+  # por la API de administracion y termina. Es idempotente, asi que corre en cada "up".
+  # No se usa load_definitions en rabbitmq.conf: con definiciones al arrancar, RabbitMQ
+  # no crea el usuario de RABBITMQ_USER y nadie se puede conectar.
+  rabbitmq-topologia:
+    image: curlimages/curl:8.17.0
+    command:
+      - "-fsS"
+      - "--retry"
+      - "10"
+      - "--retry-delay"
+      - "2"
+      - "--retry-all-errors"
+      - "-u"
+      - "${RABBITMQ_USER}:${RABBITMQ_PASSWORD}"
+      - "-H"
+      - "content-type: application/json"
+      - "-X"
+      - "POST"
+      - "--data-binary"
+      - "@/definitions.json"
+      - "-o"
+      - "/dev/null"
+      - "-w"
+      - "Topologia cargada: HTTP %{http_code}\n"
+      - "http://rabbitmq:15672/api/definitions"
+    volumes:
+      - ./contracts/messaging/rabbitmq-definitions.json:/definitions.json:ro
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: "no"
+    networks: [urgentia-net]
+
   api-gateway:
     build: ./api-gateway
     ports:
@@ -115,6 +149,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      rabbitmq-topologia:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8081/health"]
       interval: 5s
@@ -141,6 +177,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      rabbitmq-topologia:
+        condition: service_completed_successfully
     healthcheck:
       # La imagen python:3.12-slim no trae curl.
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8082/health', timeout=2)"]
@@ -159,6 +197,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      rabbitmq-topologia:
+        condition: service_completed_successfully
     healthcheck:
       # La imagen python:3.12-slim no trae curl.
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8084/health', timeout=2)"]
@@ -177,6 +217,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      rabbitmq-topologia:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:8085/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 5s
