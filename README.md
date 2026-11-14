@@ -93,7 +93,8 @@ docker compose up -d --build --wait
 El último comando construye las imágenes, levanta todo y espera a que cada contenedor esté
 sano. La primera vez tarda varios minutos.
 
-El Compose incluye los seis servicios, las dos bases de datos y RabbitMQ. Las consultas de reportes
+El Compose incluye los seis servicios, las dos bases de datos y RabbitMQ, más `rabbitmq-topologia`,
+que carga las colas del [contrato de mensajería](contracts/messaging/) y termina. Las consultas de reportes
 se acceden por el gateway con un JWT de AGENTE o ADMIN; los eventos de P6 quedan en la red interna.
 
 | Para | Abrir o correr |
