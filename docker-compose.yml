@@ -191,6 +191,13 @@ services:
     environment:
       MONGO_URI: mongodb://notifications_user:${NOTIFICATIONS_DB_PASSWORD}@mongo:27017/notifications_db
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      # Mail: "simulado" por defecto (CI). Con "real" sale por SMTP; la clave va solo en el .env.
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-simulado}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      EMAIL_DESTINO_DEMO: ${EMAIL_DESTINO_DEMO:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       mongo:
