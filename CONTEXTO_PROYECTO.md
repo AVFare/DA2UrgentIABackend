@@ -1104,6 +1104,8 @@ docker compose up -d --build --wait
 # Estado del gateway:  http://localhost:8080/health
 ```
 
+Paso a paso para una máquina limpia, verificación y problemas comunes: [`docs/manual-despliegue.md`](docs/manual-despliegue.md).
+
 ---
 
 ## 15. Testing y Definition of Done
