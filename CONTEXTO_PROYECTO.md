@@ -292,11 +292,13 @@ El gateway expone el Swagger unificado en `http://localhost:8080/swagger-ui.html
 |---|---|---|
 | `/api/auth/login` | POST | Público |
 | `/swagger-ui.html`, `/swagger-ui/**`, `/webjars/**`, `/v3/api-docs/**`, `/docs/**`, `/health` | GET | Público |
+| `/ws/tickets.wsdl`, `/ws/tickets-schema.xsd` | GET | Público (contrato SOAP, para importarlo sin token) |
 | `/api/usuarios` | POST | ADMIN |
 | `/api/usuarios/**` | GET | AGENTE, ADMIN |
 | `/api/tickets` | POST, GET | SOLICITANTE, AGENTE, ADMIN (un SOLICITANTE solo ve los suyos: lo filtra ticket-service con `X-User-Id`) |
 | `/api/tickets/{id}` | GET | SOLICITANTE (solo propios), AGENTE, ADMIN |
 | `/api/tickets/{id}/asignacion`, `/estado`, `/reclasificacion` | PATCH/POST | AGENTE, ADMIN |
+| `/ws/tickets` (SOAP, ADR-10) | POST | SOLICITANTE (solo propios), AGENTE, ADMIN. El gateway rutea `/ws/**` a ticket-service |
 | `/api/clasificaciones/**` | POST, GET | ADMIN (para pruebas; en el flujo normal la llama ticket-service por red interna) |
 | `/api/notificaciones/**` | GET | AGENTE, ADMIN |
 | `/api/reportes/**` | GET | AGENTE, ADMIN |
