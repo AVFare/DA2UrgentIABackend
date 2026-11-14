@@ -9,6 +9,11 @@ spring:
     name: ticket-service
   main:
     banner-mode: "off"
+  # Servicio SOAP de consulta de estado de tickets (contrato en src/main/resources/soap).
+  # Atiende en /ws y publica el WSDL en /ws/tickets.wsdl y el XSD en /ws/tickets-schema.xsd.
+  webservices:
+    path: /ws
+    wsdl-locations: classpath:/soap/
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/tickets_db}
     username: ${DB_USER:tickets_user}
