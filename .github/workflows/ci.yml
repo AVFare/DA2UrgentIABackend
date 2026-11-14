@@ -180,6 +180,26 @@ jobs:
           docker compose exec -T rabbitmq rabbitmqctl authenticate_user "$RABBITMQ_USER" "$RABBITMQ_PASSWORD"
           curl -fsS -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" http://localhost:15672/api/overview > /dev/null
 
+      # rabbitmq-topologia carga contracts/messaging/rabbitmq-definitions.json y termina.
+      # Se comprueba que salio con 0 y que estan todos los exchanges y las colas del contrato.
+      - name: Probar que la topologia de RabbitMQ quedo cargada
+        run: |
+          set -a; . ./.env; set +a
+          docker compose logs rabbitmq-topologia
+          salida=$(docker inspect --format '{{.State.ExitCode}}' "$(docker compose ps -aq rabbitmq-topologia)")
+          if [ "$salida" != "0" ]; then echo "rabbitmq-topologia salio con $salida"; exit 1; fi
+          definiciones=contracts/messaging/rabbitmq-definitions.json
+          api="http://localhost:15672/api"
+          faltan=0
+          for tipo in exchanges queues; do
+            jq -r ".${tipo}[].name" "$definiciones" | sort > "/tmp/${tipo}-esperados.txt"
+            curl -fsS -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" "${api}/${tipo}/%2F" | jq -r '.[].name' | sort > "/tmp/${tipo}-cargados.txt"
+            comm -23 "/tmp/${tipo}-esperados.txt" "/tmp/${tipo}-cargados.txt" > "/tmp/${tipo}-faltan.txt"
+            if [ -s "/tmp/${tipo}-faltan.txt" ]; then echo "Faltan ${tipo}:"; cat "/tmp/${tipo}-faltan.txt"; faltan=1; fi
+            echo "${tipo}: $(wc -l < "/tmp/${tipo}-esperados.txt") del contrato"
+          done
+          exit "$faltan"
+
       - name: Mostrar estado y logs si algo fallo
         if: failure()
         run: |
