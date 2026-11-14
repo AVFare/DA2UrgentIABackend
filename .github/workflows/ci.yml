@@ -144,6 +144,23 @@ jobs:
       - name: Probar el gateway desde afuera
         run: curl -fsS http://localhost:8080/health
 
+      # user-service da "sano" antes de que DatosSemilla termine de guardar los usuarios.
+      # solicitante se guarda despues de guardia, asi que cuando su login da 200 estan los dos.
+      - name: Esperar a que esten los usuarios semilla
+        if: hashFiles('reporting-service/scripts/verificar-integracion.cjs') != ''
+        run: |
+          for intento in $(seq 1 30); do
+            codigo=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+              -X POST http://localhost:8080/api/auth/login \
+              -H 'Content-Type: application/json' \
+              -d '{"email":"solicitante@urgentia.local","password":"Usuario123!"}' || true)
+            if [ "$codigo" = "200" ]; then echo "Login de solicitante OK (intento $intento)"; exit 0; fi
+            echo "Intento $intento: HTTP $codigo"
+            sleep 1
+          done
+          echo "El login de solicitante no dio 200 en 30 intentos"
+          exit 1
+
       - name: Probar ticket critico, notificacion y reportes por el gateway
         if: hashFiles('reporting-service/scripts/verificar-integracion.cjs') != ''
         run: node reporting-service/scripts/verificar-integracion.cjs
@@ -156,6 +173,12 @@ jobs:
           docker compose exec -T mongo mongosh "mongodb://classification_user:${CLASSIFICATION_DB_PASSWORD}@localhost:27017/classification_db" --quiet --eval "db.runCommand({ping:1})"
           docker compose exec -T mongo mongosh "mongodb://notifications_user:${NOTIFICATIONS_DB_PASSWORD}@localhost:27017/notifications_db" --quiet --eval "db.runCommand({ping:1})"
           docker compose exec -T mongo mongosh "mongodb://reporting_user:${REPORTING_DB_PASSWORD}@localhost:27017/reporting_db" --quiet --eval "db.runCommand({ping:1})"
+
+      - name: Probar que RabbitMQ acepta al usuario y la consola responde
+        run: |
+          set -a; . ./.env; set +a
+          docker compose exec -T rabbitmq rabbitmqctl authenticate_user "$RABBITMQ_USER" "$RABBITMQ_PASSWORD"
+          curl -fsS -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" http://localhost:15672/api/overview > /dev/null
 
       - name: Mostrar estado y logs si algo fallo
         if: failure()

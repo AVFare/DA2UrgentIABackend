@@ -93,13 +93,14 @@ docker compose up -d --build --wait
 El último comando construye las imágenes, levanta todo y espera a que cada contenedor esté
 sano. La primera vez tarda varios minutos.
 
-El Compose incluye los seis servicios y las dos bases de datos. Las consultas de reportes
+El Compose incluye los seis servicios, las dos bases de datos y RabbitMQ. Las consultas de reportes
 se acceden por el gateway con un JWT de AGENTE o ADMIN; los eventos de P6 quedan en la red interna.
 
 | Para | Abrir o correr |
 |---|---|
 | Usar la API desde el navegador | http://localhost:8080/swagger-ui.html |
 | Ver que el gateway responde | http://localhost:8080/health |
+| Abrir la consola de RabbitMQ | http://localhost:15672 (usuario y clave de `RABBITMQ_USER` / `RABBITMQ_PASSWORD` en `.env`) |
 | Ver el estado de los contenedores | `docker compose ps` |
 | Ver los logs de un servicio | `docker compose logs api-gateway` |
 | Frenar todo | `docker compose down` |
@@ -107,6 +108,10 @@ se acceden por el gateway con un JWT de AGENTE o ADMIN; los eventos de P6 quedan
 
 Los valores de `.env.example` sirven para desarrollo. El archivo `.env` no se sube al
 repositorio.
+
+El paso a paso completo para una máquina limpia (requisitos en Windows y Linux, cómo verificar
+cada servicio, cómo resetear y problemas comunes) está en el
+[manual de despliegue](docs/manual-despliegue.md).
 
 ## Demo
 
