@@ -51,6 +51,7 @@ services:
       CLASSIFICATION_SERVICE_URL: http://classification-service:8082
       NOTIFICATION_SERVICE_URL: http://notification-service:8084
       REPORTING_SERVICE_URL: http://reporting-service:8085
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
       interval: 5s

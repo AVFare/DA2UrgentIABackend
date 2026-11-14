@@ -306,6 +306,8 @@ El gateway expone el Swagger unificado en `http://localhost:8080/swagger-ui.html
 
 Lo que no figura en esta tabla se rechaza en el gateway: 401 sin token, 403 con token.
 
+**CORS:** el gateway acepta pedidos del navegador solo desde los orígenes de `CORS_ALLOWED_ORIGINS` (por defecto `http://localhost:5173`, el front con Vite). Permite `GET`, `POST` y `PATCH`, los headers `Authorization`, `Content-Type` y `X-Correlation-Id`, y expone `X-Correlation-Id`. El preflight (`OPTIONS`) no pide token.
+
 ### 6.2 Usuarios semilla (user-service)
 
 | Email | Contraseña | Rol | Nota |
@@ -960,13 +962,16 @@ PROMPT_VERSION=full
 # Integración
 CLASSIFICATION_TIMEOUT_MS=7000
 LOG_LEVEL=INFO
+
+# Front (orígenes que el gateway acepta por CORS, separados por coma)
+CORS_ALLOWED_ORIGINS=http://localhost:5173
 ```
 
 ### 14.2 Variables por servicio
 
 | Servicio | Variables |
 |---|---|
-| api-gateway | `JWT_SECRET`, `USER_SERVICE_URL=http://user-service:8083`, `TICKET_SERVICE_URL=http://ticket-service:8081`, `CLASSIFICATION_SERVICE_URL=http://classification-service:8082`, `NOTIFICATION_SERVICE_URL=http://notification-service:8084`, `REPORTING_SERVICE_URL=http://reporting-service:8085` |
+| api-gateway | `JWT_SECRET`, `USER_SERVICE_URL=http://user-service:8083`, `TICKET_SERVICE_URL=http://ticket-service:8081`, `CLASSIFICATION_SERVICE_URL=http://classification-service:8082`, `NOTIFICATION_SERVICE_URL=http://notification-service:8084`, `REPORTING_SERVICE_URL=http://reporting-service:8085`, `CORS_ALLOWED_ORIGINS=http://localhost:5173` |
 | user-service | `DB_URL=jdbc:postgresql://postgres:5432/users_db`, `DB_USER=users_user`, `DB_PASSWORD`, `JWT_SECRET`, `JWT_EXPIRATION_MINUTES` |
 | ticket-service | `DB_URL=jdbc:postgresql://postgres:5432/tickets_db`, `DB_USER=tickets_user`, `DB_PASSWORD`, `CLASSIFICATION_URL=http://classification-service:8082`, `CLASSIFICATION_TIMEOUT_MS`, `EVENT_SUBSCRIBERS=http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos` |
 | classification-service | `MONGO_URI=mongodb://classification_user:<pass>@mongo:27017/classification_db`, `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LLM_TIMEOUT_MS`, `PROMPT_VERSION` |
@@ -1026,6 +1031,7 @@ services:
       CLASSIFICATION_SERVICE_URL: http://classification-service:8082
       NOTIFICATION_SERVICE_URL: http://notification-service:8084
       REPORTING_SERVICE_URL: http://reporting-service:8085
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
       interval: 5s
