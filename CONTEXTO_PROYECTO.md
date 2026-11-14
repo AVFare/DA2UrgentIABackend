@@ -85,6 +85,7 @@ Si sos una IA ayudando a un integrante del equipo:
 | `reporting-service` | 8085 | Node 20, NestJS, TypeScript | MongoDB `reporting_db` | P6 | Lado de lectura (CQRS): proyecta eventos y expone reportes y SLA |
 
 Infraestructura en Compose: `postgres` (postgres:16, puerto 5432), `mongo` (mongo:7, puerto 27017) y `rabbitmq` (rabbitmq:4-management, AMQP en 5672 y consola de administración en 15672).
+`rabbitmq-topologia` (curlimages/curl) es un contenedor de un solo uso: cuando `rabbitmq` está sano carga la topología de [`contracts/messaging/rabbitmq-definitions.json`](contracts/messaging/rabbitmq-definitions.json) por la API de administración y termina. ticket, classification, notification y reporting arrancan después de que termine bien.
 Nombres DNS internos = nombre del servicio en Compose (ej.: `http://ticket-service:8081`).
 En desarrollo, `postgres`, `mongo` y `rabbitmq` publican sus puertos solo en `127.0.0.1`, para poder usarlos desde el IDE. La consola de RabbitMQ queda en http://localhost:15672 con `RABBITMQ_USER` / `RABBITMQ_PASSWORD`.
 
@@ -987,7 +988,7 @@ CORS_ALLOWED_ORIGINS=http://localhost:5173
 
 ### 14.3 `docker-compose.yml`
 
-`postgres`, `mongo`, `rabbitmq` y `api-gateway` ya están en el archivo del repo, que es el que vale. Cada dueño suma la entrada de su servicio siguiendo el ejemplo de `ticket-service`.
+`postgres`, `mongo`, `rabbitmq`, `rabbitmq-topologia` y `api-gateway` ya están en el archivo del repo, que es el que vale. Cada dueño suma la entrada de su servicio siguiendo el ejemplo de `ticket-service`.
 
 ```yaml
 services:
@@ -1046,6 +1047,21 @@ services:
       retries: 10
     networks: [urgentia-net]
 
+  # Un solo uso: carga exchanges, colas y bindings por la API de administracion y termina.
+  # No usar load_definitions: con definiciones al arrancar no se crea el usuario del .env.
+  rabbitmq-topologia:
+    image: curlimages/curl:8.17.0
+    command: ["-fsS", "--retry", "10", "--retry-delay", "2", "--retry-all-errors",
+              "-u", "${RABBITMQ_USER}:${RABBITMQ_PASSWORD}", "-H", "content-type: application/json",
+              "-X", "POST", "--data-binary", "@/definitions.json", "-o", "/dev/null",
+              "-w", "Topologia cargada: HTTP %{http_code}\n", "http://rabbitmq:15672/api/definitions"]
+    volumes:
+      - ./contracts/messaging/rabbitmq-definitions.json:/definitions.json:ro
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+    restart: "no"
+    networks: [urgentia-net]
+
   api-gateway:
     build: ./api-gateway
     ports:
@@ -1078,6 +1094,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }   # solo los servicios que usan el broker
+      rabbitmq-topologia: { condition: service_completed_successfully }   # idem: las colas ya existen al arrancar
     networks: [urgentia-net]
 
   # user-service, classification-service, notification-service y reporting-service: mismo patrón
