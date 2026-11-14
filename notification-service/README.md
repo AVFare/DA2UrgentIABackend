@@ -25,7 +25,16 @@ OpenAPI en `/openapi.json` y Swagger UI en `/docs`. El contrato exportado está 
 | `TicketResuelto` | `USUARIO:{solicitanteId}` | `EMAIL_SIMULADO` | `Tu ticket fue resuelto: {titulo}` |
 | Otros | — | — | `IGNORADO` |
 
-`EMAIL_SIMULADO` escribe una línea de log JSON con destinatario, asunto y mensaje. `INTERNA` solo se guarda.
+`INTERNA` solo se guarda. Para `EMAIL_SIMULADO`, `EmailProvider` decide según `EMAIL_PROVIDER`:
+
+| `EMAIL_PROVIDER` | Qué hace |
+|---|---|
+| `simulado` (default, para el CI) | Escribe una línea de log JSON (`EMAIL_SIMULADO`) con destinatario, asunto y mensaje |
+| `real` | Manda el mail por SMTP con TLS (Gmail: `smtp.gmail.com:587` y una contraseña de aplicación) y lo loguea como `EMAIL_ENVIADO` |
+
+Los usuarios de la demo no tienen casillas reales, así que en modo `real` todo va a `EMAIL_DESTINO_DEMO`, con el destinatario original al principio del asunto: `[GRUPO:GUARDIA] [P1] Ticket escalado: …`.
+Si el servidor SMTP falla, la notificación se guarda como `FALLIDA` y el evento se da por procesado: no se pierde ni se reintenta en bucle.
+Con `EMAIL_PROVIDER=real`, el servicio no arranca si faltan `SMTP_USER`, `SMTP_PASSWORD` o `EMAIL_DESTINO_DEMO`.
 
 ### Consumidor de RabbitMQ
 
@@ -83,7 +92,7 @@ pip install -r requirements-dev.txt
 MONGO_URI=mongodb://localhost:27017 uvicorn app.main:app --port 8084 --reload
 ```
 
-Variables: `MONGO_URI`, `MONGO_DB` (default `notifications_db`), `RABBITMQ_URL` (sin valor no se levanta el consumidor), `RABBITMQ_COLA` (default `notificaciones.eventos`), `RABBITMQ_PREFETCH` (default `10`), `LOG_LEVEL` (default `INFO`), `SERVICE_VERSION` (default `0.1.0`).
+Variables: `MONGO_URI`, `MONGO_DB` (default `notifications_db`), `RABBITMQ_URL` (sin valor no se levanta el consumidor), `RABBITMQ_COLA` (default `notificaciones.eventos`), `RABBITMQ_PREFETCH` (default `10`), `EMAIL_PROVIDER` (`simulado` o `real`), `SMTP_HOST` (default `smtp.gmail.com`), `SMTP_PORT` (default `587`), `SMTP_USER`, `SMTP_PASSWORD` (solo en el `.env`), `EMAIL_REMITENTE` (default `SMTP_USER`), `EMAIL_DESTINO_DEMO`, `LOG_LEVEL` (default `INFO`), `SERVICE_VERSION` (default `0.1.0`).
 
 Tests y lint:
 
@@ -109,6 +118,6 @@ python scripts/export_openapi.py
 | Patrón | Dónde | Problema que resuelve |
 |---|---|---|
 | Observer (consumidor) | Cola `notificaciones.eventos` (`app/consumers/eventos_consumer.py`) y `POST /api/eventos`, más `REGLAS` en `app/services/evento_service.py` | El servicio reacciona a los eventos del ticket sin que `ticket-service` sepa quién notifica ni cómo. Sumar un evento es sumar una entrada en `REGLAS` |
-| Strategy | `app/services/canales.py` (`Canal`, `EmailSimulado`, `Interna`) | Cambiar o sumar canales (en la parte 2, un envío real) sin tocar la lógica de eventos |
+| Strategy | `app/services/canales.py` (`Canal`, `EmailSimulado`, `Interna`) y `EMAIL_PROVIDER` en `EmailProvider` | Cambiar o sumar canales, o pasar del mail simulado al real, sin tocar la lógica de eventos |
 | Factory | `app/services/plantillas.py` (`PlantillaFactory`) | Arma asunto y mensaje según el tipo de evento en un solo lugar |
 | Repository | `app/repositories/` (`MongoRepository` y sus hijas) | Solo los repositories conocen Mongo; la lógica común (paginar, buscar por id, convertir `_id`) está una sola vez |
