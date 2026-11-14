@@ -23,7 +23,7 @@ import org.springframework.web.util.pattern.PathPatternParser;
 import reactor.core.publisher.Mono;
 
 /**
- * Tercer eslabon de la cadena: controla que el rol del usuario alcance para
+ * Cuarto eslabon de la cadena: controla que el rol del usuario alcance para
  * la operacion pedida, segun la tabla de la seccion 6.1 del contexto.
  * Lo que no figura en la tabla se rechaza.
  */
