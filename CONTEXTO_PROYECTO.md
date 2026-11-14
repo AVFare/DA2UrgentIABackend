@@ -1227,7 +1227,7 @@ Vence el 30/11 (demo en video de 15 minutos como máximo). Estado al 14/11:
 | | ticket-service publica por RabbitMQ con Transactional Outbox (reemplaza a `HttpEventSender`) | Pendiente |
 | | reporting-service consume `reportes.eventos` | Pendiente |
 | Clasificación por cola | `ClasificacionSolicitada` → worker de classification-service → `ClasificacionGenerada` (10.5); `POST /api/tickets` responde en `PENDIENTE_CLASIFICACION` | Pendiente |
-| API externa real | Mail real por SMTP en notification-service (`EMAIL_PROVIDER=real`) | Hecho |
+| API externa real | Mail real por SMTP en notification-service (`EMAIL_PROVIDER=real`) | Implementado; falta la prueba con Gmail real |
 | Servicio SOAP | `ConsultarEstadoTicket` en ticket-service, WSDL en `contracts/soap/` (ADR-10) | Hecho |
 | Frontend | Repo aparte (React, Vite y TypeScript) contra el gateway; CORS en el gateway | En curso |
 | Pruebas | Punta a punta, casos de falla (IA, broker y consumidor caídos) y carga básica | Pendiente |
