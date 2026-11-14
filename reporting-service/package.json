@@ -15,6 +15,7 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --runInBand --coverage",
     "test:e2e": "jest --config test/jest-e2e.json --runInBand",
+    "test:rabbitmq": "jest --config test/jest-rabbitmq.json --runInBand",
     "format:check": "prettier --check src test scripts *.json *.md *.yml",
     "format": "prettier --write src test scripts *.json *.md *.yml",
     "demo": "npm run build && node scripts/demo.cjs",
