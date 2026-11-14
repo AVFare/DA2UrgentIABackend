@@ -34,6 +34,9 @@ class RepositorioEnMemoria:
         ordenados = sorted(filtrados, key=lambda r: r.fecha, reverse=True)
         return Pagina(ordenados[page * size:(page + 1) * size], page, size, len(filtrados))
 
+    async def buscar_por_solicitud(self, solicitud_id: UUID) -> RegistroClasificacion | None:
+        return next((r for r in self.registros if r.solicitud_id == solicitud_id), None)
+
 
 class RelojFalso:
     def __init__(self) -> None:
@@ -80,3 +83,17 @@ class LlmFalso:
             raise respuesta
         return RespuestaLlm(clasificacion=respuesta, modelo="modelo-falso",
                             texto_crudo=f'{{"respuesta": "cruda", "eco": "{pedido.descripcion}"}}')
+
+
+class PublicadorFalso:
+    """Guarda lo publicado; si se le programa un error, lo lanza en la proxima publicacion."""
+
+    def __init__(self) -> None:
+        self.publicados: list[tuple[RegistroClasificacion, str]] = []
+        self.error: Exception | None = None
+
+    async def publicar(self, registro: RegistroClasificacion, correlation_id: str) -> None:
+        if self.error:
+            error, self.error = self.error, None
+            raise error
+        self.publicados.append((registro, correlation_id))
