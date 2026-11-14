@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  UrgentIA - servicio SOAP de consulta de estado de tickets (WSDL 1.1, SOAP 1.1, document/literal).
+
+  Pensado para un sistema legado ficticio de un cliente que solo habla SOAP: consulta el estado de
+  un ticket sin pasar por la API REST. Lo atiende ticket-service y se llama a traves del gateway.
+
+  Fuente de verdad: CONTEXTO_PROYECTO.md. Dueña: P3.
+  Pendiente de acordar: la ruta /ws/tickets y la autenticacion (JWT por el gateway) se cierran con P1.
+-->
+<wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+                  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                  xmlns:t="http://urgentia.local/ws/tickets"
+                  name="TicketsService"
+                  targetNamespace="http://urgentia.local/ws/tickets">
+
+  <wsdl:types>
+    <xs:schema>
+      <!-- El esquema vive en tickets.xsd; se publica junto al WSDL (en /ws/tickets.xsd). -->
+      <xs:import namespace="http://urgentia.local/ws/tickets" schemaLocation="tickets.xsd"/>
+    </xs:schema>
+  </wsdl:types>
+
+  <wsdl:message name="ConsultarEstadoTicketRequest">
+    <wsdl:part name="parameters" element="t:ConsultarEstadoTicketRequest"/>
+  </wsdl:message>
+  <wsdl:message name="ConsultarEstadoTicketResponse">
+    <wsdl:part name="parameters" element="t:ConsultarEstadoTicketResponse"/>
+  </wsdl:message>
+  <wsdl:message name="TicketFault">
+    <wsdl:part name="detalle" element="t:ErrorDetalle"/>
+  </wsdl:message>
+
+  <wsdl:portType name="TicketsPort">
+    <wsdl:operation name="ConsultarEstadoTicket">
+      <wsdl:documentation>
+        Devuelve el estado, la prioridad y el vencimiento del SLA de un ticket.
+        Ticket inexistente: Fault con codigo NO_ENCONTRADO. Id mal formado: Fault con codigo VALIDACION.
+      </wsdl:documentation>
+      <wsdl:input message="t:ConsultarEstadoTicketRequest"/>
+      <wsdl:output message="t:ConsultarEstadoTicketResponse"/>
+      <wsdl:fault name="TicketFault" message="t:TicketFault"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <wsdl:binding name="TicketsBinding" type="t:TicketsPort">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="ConsultarEstadoTicket">
+      <soap:operation soapAction="http://urgentia.local/ws/tickets/ConsultarEstadoTicket"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="TicketFault">
+        <soap:fault name="TicketFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:service name="TicketsService">
+    <wsdl:port name="TicketsPort" binding="t:TicketsBinding">
+      <!-- A traves del api-gateway. Directo al servicio (solo desarrollo): http://localhost:8081/ws/tickets -->
+      <soap:address location="http://localhost:8080/ws/tickets"/>
+    </wsdl:port>
+  </wsdl:service>
+
+</wsdl:definitions>
