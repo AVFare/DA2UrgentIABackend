@@ -17,8 +17,8 @@
 
   <wsdl:types>
     <xs:schema>
-      <!-- El esquema vive en tickets.xsd; se publica junto al WSDL (en /ws/tickets.xsd). -->
-      <xs:import namespace="http://urgentia.local/ws/tickets" schemaLocation="tickets.xsd"/>
+      <!-- El esquema vive en tickets-schema.xsd; se publica junto al WSDL (en /ws/tickets-schema.xsd). -->
+      <xs:import namespace="http://urgentia.local/ws/tickets" schemaLocation="tickets-schema.xsd"/>
     </xs:schema>
   </wsdl:types>
 
