@@ -44,7 +44,7 @@ def test_una_solicitud_valida_se_procesa_con_su_correlation_id():
 
     assert manejar(manejador, solicitud()) is Resultado.PROCESADA
     assert str(repositorio.registros[0].solicitud_id) == "0b7e1f0a-6c1d-4f6e-9a55-2d1c3e4f5a6b"
-    assert publicador.publicados[0][1] == "correlacion-1"
+    assert publicador.publicados[0][0].correlation_id == "correlacion-1"
     assert correlation_id_actual.get() == "-"
 
 
@@ -65,11 +65,12 @@ def test_un_mensaje_que_no_cumple_el_contrato_se_descarta():
     assert manejar(manejador, solicitud(campoDeMas=1)) is Resultado.DESCARTADA
 
 
-def test_si_el_llm_falla_se_reintenta():
+def test_si_el_llm_falla_se_responde_con_el_error_y_no_se_reintenta():
     manejador, _, publicador = armar(LlmTimeoutError(5000))
 
-    assert manejar(manejador, solicitud()) is Resultado.REINTENTAR
+    assert manejar(manejador, solicitud()) is Resultado.PROCESADA
     assert publicador.publicados == []
+    assert len(publicador.errores) == 1
 
 
 def test_un_error_inesperado_tambien_se_reintenta():

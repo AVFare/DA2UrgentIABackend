@@ -7,6 +7,7 @@ from uuid import UUID
 from app.application.errors import LlmError
 from app.application.ports.clasificacion_repository import Pagina
 from app.application.ports.llm_provider import PedidoLlm, RespuestaLlm
+from app.application.solicitud import SolicitudDeClasificacion
 from app.domain.models import Clasificacion, RegistroClasificacion
 
 CLASIFICACION_CRITICA = Clasificacion(
@@ -89,11 +90,20 @@ class PublicadorFalso:
     """Guarda lo publicado; si se le programa un error, lo lanza en la proxima publicacion."""
 
     def __init__(self) -> None:
-        self.publicados: list[tuple[RegistroClasificacion, str]] = []
+        self.publicados: list[tuple[SolicitudDeClasificacion, RegistroClasificacion]] = []
+        self.errores: list[tuple[SolicitudDeClasificacion, LlmError]] = []
         self.error: Exception | None = None
 
-    async def publicar(self, registro: RegistroClasificacion, correlation_id: str) -> None:
+    async def publicar_clasificacion(self, solicitud: SolicitudDeClasificacion,
+                                     registro: RegistroClasificacion) -> None:
+        self._fallar_si_corresponde()
+        self.publicados.append((solicitud, registro))
+
+    async def publicar_error(self, solicitud: SolicitudDeClasificacion, error: LlmError) -> None:
+        self._fallar_si_corresponde()
+        self.errores.append((solicitud, error))
+
+    def _fallar_si_corresponde(self) -> None:
         if self.error:
             error, self.error = self.error, None
             raise error
-        self.publicados.append((registro, correlation_id))

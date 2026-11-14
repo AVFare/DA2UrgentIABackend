@@ -5,6 +5,8 @@ import asyncio
 from aio_pika import DeliveryMode, Message
 from aio_pika.abc import AbstractExchange
 
+from app.application.errors import LlmError
+from app.application.solicitud import SolicitudDeClasificacion
 from app.domain.models import RegistroClasificacion
 from app.infrastructure.messaging.conexion import ConexionRabbitMq
 from app.infrastructure.messaging.mensajes import ClasificacionGenerada
@@ -20,18 +22,28 @@ class RabbitMqPublicador:
         self._exchange: AbstractExchange | None = None
         self._candado = asyncio.Lock()
 
-    async def publicar(self, registro: RegistroClasificacion, correlation_id: str) -> None:
-        mensaje = ClasificacionGenerada.desde_registro(registro, correlation_id)
+    async def publicar_clasificacion(self, solicitud: SolicitudDeClasificacion,
+                                     registro: RegistroClasificacion) -> None:
+        await self._publicar(ClasificacionGenerada.clasificado(solicitud, registro))
+
+    async def publicar_error(self, solicitud: SolicitudDeClasificacion, error: LlmError) -> None:
+        await self._publicar(ClasificacionGenerada.con_error(solicitud, error))
+
+    async def _publicar(self, mensaje: ClasificacionGenerada) -> None:
         exchange = await self._obtener_exchange()
-        # mandatory: si ninguna cola recibe el mensaje, falla en vez de perderlo.
+        # Propiedades AMQP de contracts/messaging/README.md. mandatory: si ninguna cola recibe el
+        # mensaje, falla en vez de perderlo.
         await exchange.publish(
             Message(
                 mensaje.a_json(),
                 content_type="application/json",
+                content_encoding="utf-8",
                 delivery_mode=DeliveryMode.PERSISTENT,
                 message_id=str(mensaje.event_id),
-                correlation_id=correlation_id,
+                correlation_id=mensaje.correlation_id,
                 type=mensaje.event_type,
+                app_id=mensaje.source,
+                timestamp=mensaje.occurred_at,
             ),
             routing_key=self._topologia.clave_generada,
             mandatory=True,

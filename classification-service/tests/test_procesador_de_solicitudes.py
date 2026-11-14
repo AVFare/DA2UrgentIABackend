@@ -3,7 +3,7 @@ from uuid import UUID
 
 import pytest
 
-from app.application.errors import LlmNoDisponibleError
+from app.application.errors import LlmNoDisponibleError, LlmTimeoutError
 from app.application.procesador_de_solicitudes import ProcesadorDeSolicitudes, SolicitudDeClasificacion
 from tests.fakes import CLASIFICACION_CRITICA, LlmFalso, PublicadorFalso, RepositorioEnMemoria
 from tests.test_clasificacion_facade import crear_facade
@@ -34,7 +34,8 @@ def test_clasifica_guarda_con_el_id_de_la_solicitud_y_publica():
     assert registro.solicitud_id == SOLICITUD.solicitud_id
     assert registro.ticket_id == SOLICITUD.ticket_id
     assert "[EMAIL]" in registro.texto_enmascarado
-    assert publicador.publicados == [(registro, "correlacion-1")]
+    assert publicador.publicados == [(SOLICITUD, registro)]
+    assert publicador.errores == []
 
 
 def test_una_solicitud_repetida_no_vuelve_a_consultar_al_llm():
@@ -45,7 +46,7 @@ def test_una_solicitud_repetida_no_vuelve_a_consultar_al_llm():
 
     assert len(llm.pedidos) == 1
     assert len(repositorio.registros) == 1
-    assert [registro for registro, _ in publicador.publicados] == [repositorio.registros[0]] * 2
+    assert [registro for _, registro in publicador.publicados] == [repositorio.registros[0]] * 2
 
 
 def test_si_falla_la_publicacion_el_reintento_reusa_lo_guardado():
@@ -60,11 +61,31 @@ def test_si_falla_la_publicacion_el_reintento_reusa_lo_guardado():
     assert len(publicador.publicados) == 1
 
 
-def test_si_el_llm_falla_no_guarda_ni_publica():
-    procesador, _, repositorio, publicador = armar(LlmNoDisponibleError("groq respondio HTTP 503"))
+def test_si_el_llm_falla_responde_con_el_error_sin_guardar():
+    error = LlmNoDisponibleError("groq respondio HTTP 503")
+    procesador, _, repositorio, publicador = armar(error)
 
-    with pytest.raises(LlmNoDisponibleError):
-        asyncio.run(procesador.procesar(SOLICITUD))
+    asyncio.run(procesador.procesar(SOLICITUD))
 
     assert repositorio.registros == []
     assert publicador.publicados == []
+    assert publicador.errores == [(SOLICITUD, error)]
+
+
+def test_una_solicitud_que_fallo_se_puede_volver_a_pedir():
+    procesador, llm, repositorio, publicador = armar(LlmTimeoutError(5000), CLASIFICACION_CRITICA)
+
+    asyncio.run(procesador.procesar(SOLICITUD))
+    asyncio.run(procesador.procesar(SOLICITUD))
+
+    assert len(llm.pedidos) == 2
+    assert len(publicador.errores) == 1
+    assert publicador.publicados == [(SOLICITUD, repositorio.registros[0])]
+
+
+def test_si_falla_la_publicacion_del_error_se_propaga_para_reintentar():
+    procesador, _, _, publicador = armar(LlmTimeoutError(5000))
+    publicador.error = ConnectionError("broker caido")
+
+    with pytest.raises(ConnectionError):
+        asyncio.run(procesador.procesar(SOLICITUD))

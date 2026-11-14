@@ -22,7 +22,7 @@ def test_sin_variables_usa_los_defaults():
     assert settings.log_level == "INFO"
     assert settings.llm_api_key.get_secret_value() == ""
     assert settings.rabbitmq_url.get_secret_value() == ""
-    assert settings.cola_prefetch == 4
+    assert settings.cola_prefetch == 10
 
 
 def test_lee_las_variables_de_entorno(monkeypatch):

@@ -29,22 +29,29 @@ tiempo → 504 `LLM_TIMEOUT`.
 
 ## Clasificación por cola
 
-Además de la API, el servicio clasifica lo que le llega por RabbitMQ. El contrato de los mensajes
-y de las colas está en [`contracts/messaging/clasificacion.md`](../contracts/messaging/clasificacion.md).
+Además de la API, el servicio clasifica lo que le llega por RabbitMQ. El contrato está en
+[`contracts/messaging/`](../contracts/messaging/README.md) (topología y reglas) y en
+[`contracts/events/clasificacion-events.schema.json`](../contracts/events/clasificacion-events.schema.json)
+(los mensajes).
 
-1. Consume `ClasificacionSolicitada` de la cola `classification.solicitudes`, hasta `COLA_PREFETCH`
+1. Consume `ClasificacionSolicitada` de la cola `clasificacion.solicitudes`, hasta `COLA_PREFETCH`
    a la vez.
 2. Clasifica con la misma `ClasificacionFacade` que usa la API y guarda el registro con el id de
    la solicitud.
-3. Publica `ClasificacionGenerada` con la clasificación.
+3. Publica `ClasificacionGenerada` en `urgentia.clasificacion` (routing key `ClasificacionGenerada`)
+   con resultado `CLASIFICADO` y la clasificación, o con resultado `ERROR` si el LLM falló.
 4. Confirma la solicitud (`ack`) después de guardar y publicar.
+
+El servicio declara al arrancar su parte de la topología (exchange, cola, cola de mensajes muertos
+y bindings) con los mismos argumentos que `rabbitmq-definitions.json`, así puede consumir aunque la
+topología todavía no se haya cargado.
 
 | Situación | Qué pasa |
 |---|---|
 | Llega dos veces la misma solicitud | No se consulta otra vez al LLM: se publica de nuevo la clasificación guardada, con el mismo `eventId` |
-| El LLM falla o no responde | La solicitud vuelve a la cola. Tras 4 intentos, RabbitMQ la manda a `classification.solicitudes.dlq` |
-| El mensaje no cumple el contrato | Va directo a `classification.solicitudes.dlq`, sin reintentos |
-| Ninguna cola recibe la respuesta | La publicación falla, la solicitud se reintenta y termina en la cola de mensajes muertos |
+| El LLM falla o no responde | Se publica `ClasificacionGenerada` con resultado `ERROR` y el código del REST (`LLM_TIMEOUT` o `LLM_RESPUESTA_INVALIDA`), y la solicitud se confirma. Se puede volver a pedir la clasificación |
+| El mensaje no cumple el contrato | Va directo a `clasificacion.solicitudes.dlq`, sin reintentos |
+| Falla la base o la publicación (ninguna cola recibe la respuesta) | La solicitud vuelve a la cola. Tras 5 reintentos, RabbitMQ la manda a `clasificacion.solicitudes.dlq` |
 | El servicio se cae a mitad de una solicitud | Como no llegó a confirmarla, RabbitMQ la vuelve a entregar |
 | RabbitMQ no está disponible | La API sigue respondiendo y la conexión se reintenta cada 5 s |
 
@@ -157,7 +164,7 @@ pedidos por minuto del plan gratuito), el evaluador espera y reintenta.
 | `LLM_TIMEOUT_MS` | `5000` | Timeout de cada llamada al LLM |
 | `PROMPT_VERSION` | `full` | Lee `prompts/clasificacion_{PROMPT_VERSION}.txt` |
 | `RABBITMQ_URL` | — | `amqp://<user>:<pass>@rabbitmq:5672/`. Sin esta variable no se consume la cola |
-| `COLA_PREFETCH` | `4` | Cuántas solicitudes de la cola se procesan a la vez |
+| `COLA_PREFETCH` | `10` | Cuántas solicitudes de la cola se procesan a la vez |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` o `ERROR` |
 
 ## Estructura

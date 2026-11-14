@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     # Sin RABBITMQ_URL el servicio atiende solo por la API, sin consumir la cola.
     rabbitmq_url: SecretStr = SecretStr("")
     # Cuantas solicitudes de la cola se procesan a la vez.
-    cola_prefetch: int = Field(default=4, gt=0)
+    cola_prefetch: int = Field(default=10, gt=0)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     @field_validator("llm_provider", "log_level", mode="before")

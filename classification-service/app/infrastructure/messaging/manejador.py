@@ -10,7 +10,6 @@ from enum import Enum
 
 from pydantic import ValidationError
 
-from app.application.errors import LlmError
 from app.application.procesador_de_solicitudes import ProcesadorDeSolicitudes
 from app.infrastructure.api.correlation import correlation_id_actual
 from app.infrastructure.messaging.mensajes import ClasificacionSolicitada
@@ -22,6 +21,7 @@ class Resultado(Enum):
     PROCESADA = "procesada"
     # El mensaje no cumple el contrato: reintentarlo no lo arregla.
     DESCARTADA = "descartada"
+    # Fallo algo transitorio (base o broker): se reintenta.
     REINTENTAR = "reintentar"
 
 
@@ -41,9 +41,6 @@ class ManejadorDeSolicitudes:
         try:
             await self._procesador.procesar(mensaje.a_solicitud())
             return Resultado.PROCESADA
-        except LlmError as error:
-            log.warning("No se pudo clasificar la solicitud %s (%s); se reintenta", mensaje.event_id, error)
-            return Resultado.REINTENTAR
         except Exception:
             log.exception("Error al procesar la solicitud %s; se reintenta", mensaje.event_id)
             return Resultado.REINTENTAR

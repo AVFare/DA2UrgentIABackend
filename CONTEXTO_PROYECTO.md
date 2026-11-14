@@ -566,13 +566,14 @@ Si está `PENDIENTE_CLASIFICACION`: `clasificacion`, `prioridad`, `fechaLimiteSl
 
 **Documento Mongo `clasificaciones`:** los campos de la respuesta + `respuestaCruda` (string) + `textoEnmascarado` (string) + `solicitudId` (string, solo si se pidió por la cola; índice único).
 
-**Clasificación por cola (RabbitMQ).** El contrato está en `contracts/messaging/clasificacion.md`.
-1. El servicio consume `ClasificacionSolicitada` de la cola `classification.solicitudes`, hasta `COLA_PREFETCH` (4) a la vez.
-2. Valida el mensaje contra el contrato; si no cumple, lo rechaza sin reintento y va a `classification.solicitudes.dlq`.
+**Clasificación por cola (RabbitMQ).** El contrato está en `contracts/messaging/` y `contracts/events/clasificacion-events.schema.json`.
+1. El servicio consume `ClasificacionSolicitada` de la cola `clasificacion.solicitudes`, hasta `COLA_PREFETCH` (10) a la vez. Al arrancar declara su parte de la topología con los mismos argumentos que `rabbitmq-definitions.json`.
+2. Valida el mensaje contra el contrato; si no cumple, lo rechaza sin reintento y va a `clasificacion.solicitudes.dlq`.
 3. `ProcesadorDeSolicitudes` busca si esa solicitud (`eventId`) ya tiene clasificación guardada. Si no, clasifica con `ClasificacionFacade` (el mismo flujo de arriba) y guarda el registro con `solicitudId`.
-4. Publica `ClasificacionGenerada` (routing key `clasificacion.generada`) con confirmación del broker y `mandatory`.
+4. Publica `ClasificacionGenerada` (routing key `ClasificacionGenerada`) con confirmación del broker, `mandatory` y las propiedades AMQP del contrato. El payload lleva `ticketId`, `resultado` (`CLASIFICADO` o `ERROR`) y `clasificacion` o `error`. El `eventId` sale del de la solicitud, así una solicitud repetida da la misma respuesta.
 5. Confirma la solicitud (`ack`) recién después de guardar y publicar.
-6. Si el LLM falla o algo no se pudo hacer, devuelve la solicitud a la cola con `basic.reject` y `requeue=true`. Tras 4 intentos (`x-delivery-limit: 3`), RabbitMQ la manda a la cola de mensajes muertos.
+6. Si el LLM falla, publica `ClasificacionGenerada` con resultado `ERROR` (mismos códigos que el REST) y confirma la solicitud.
+7. Si falla la base o la publicación, devuelve la solicitud a la cola con `basic.reject` y `requeue=true` (en RabbitMQ 4 un `nack` con reencolado no cuenta para el límite y se reintentaría sin fin). Tras 5 reintentos (`x-delivery-limit: 5`), RabbitMQ la manda a la cola de mensajes muertos.
 
 Sin `RABBITMQ_URL` el servicio no consume la cola y atiende solo por REST. Si RabbitMQ no está disponible, el REST sigue funcionando y la conexión se reintenta cada 5 s.
 
