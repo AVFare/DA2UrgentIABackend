@@ -26,7 +26,7 @@ import org.springframework.web.util.pattern.PathPatternParser;
 import reactor.core.publisher.Mono;
 
 /**
- * Segundo eslabon de la cadena: exige un JWT valido en todo pedido que no sea
+ * Tercer eslabon de la cadena: exige un JWT valido en todo pedido que no sea
  * publico. Si el token es valido, le pasa al servicio destino quien es el
  * usuario (X-User-Id) y que rol tiene (X-User-Rol).
  */
