@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   UrgentIA - servicio SOAP de consulta de estado de tickets (esquema).
-  Lo importa tickets.wsdl. Dueña: P3. Se implementa dentro de ticket-service.
+  Lo importa tickets.wsdl (se llama distinto para no chocar con el nombre del WSDL al publicarlos). Dueña: P3. Se implementa dentro de ticket-service.
 
   Los valores de EstadoTicket y Prioridad son los de la seccion 7 de CONTEXTO_PROYECTO.md.
   Los codigos de error son un subconjunto de la seccion 5.3.

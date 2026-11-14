@@ -107,6 +107,62 @@ Contrato completo: [`contracts/ticket-service.yaml`](../contracts/ticket-service
 Todos los errores salen con el formato común de la sección 5.3 (`codigo`, `mensaje`,
 `detalles`, `timestamp`, `path`, `correlationId`).
 
+## Servicio SOAP (Entrega 2)
+
+Consulta del estado de un ticket por SOAP, pensada para un sistema legado que no habla REST
+(decisión en [ADR-10](../docs/adr/ADR-10-soap-consulta-de-estado.md)). Es de solo lectura.
+
+Contrato: [`contracts/soap/tickets.wsdl`](../contracts/soap/tickets.wsdl) y
+[`tickets-schema.xsd`](../contracts/soap/tickets-schema.xsd) (SOAP 1.1, document/literal).
+
+| Qué | Dónde |
+|---|---|
+| Endpoint | `POST /ws/tickets` (operación `ConsultarEstadoTicket`) |
+| WSDL | `GET /ws/tickets.wsdl` |
+| XSD | `GET /ws/tickets-schema.xsd` |
+
+**Pedido:** `ticketId` (UUID). **Respuesta:** `ticketId`, `estado`, `prioridad` y `fechaLimiteSla`. Los
+dos últimos faltan si el ticket todavía no está clasificado.
+
+```xml
+<t:ConsultarEstadoTicketRequest xmlns:t="http://urgentia.local/ws/tickets">
+  <t:ticketId>7c9e6679-7425-40de-944b-e07fc1f90ae7</t:ticketId>
+</t:ConsultarEstadoTicketRequest>
+```
+
+```xml
+<ns2:ConsultarEstadoTicketResponse xmlns:ns2="http://urgentia.local/ws/tickets">
+  <ns2:ticketId>7c9e6679-7425-40de-944b-e07fc1f90ae7</ns2:ticketId>
+  <ns2:estado>ESCALADO</ns2:estado>
+  <ns2:prioridad>P1</ns2:prioridad>
+  <ns2:fechaLimiteSla>2026-10-05T15:03:11Z</ns2:fechaLimiteSla>
+</ns2:ConsultarEstadoTicketResponse>
+```
+
+**Errores (SOAP Fault, HTTP 500):** el detalle trae `codigo`, `mensaje` y el `correlationId` del pedido.
+
+| `codigo` | `faultcode` | Cuándo |
+|---|---|---|
+| `NO_ENCONTRADO` | `soap:Client` | El ticket no existe, o un SOLICITANTE pide uno ajeno |
+| `VALIDACION` | `soap:Client` | `ticketId` ausente o que no es un UUID; `X-User-Id` o `X-User-Rol` inválidos |
+| `ERROR_INTERNO` | `soap:Server` | Cualquier otra falla (sin detalles internos) |
+
+**Quién consulta:** igual que el REST, usa `X-User-Id` y `X-User-Rol` (los pone el gateway): un
+SOLICITANTE solo ve sus tickets. Sin esos headers (llamada directa al 8081) no se restringe nada.
+
+**Cómo probarlo:** [`docs/demo/soap-demo.http`](../docs/demo/soap-demo.http) (VS Code, extensión REST Client)
+o la colección de Postman [`docs/demo/urgentia-soap.postman_collection.json`](../docs/demo/urgentia-soap.postman_collection.json).
+También se puede importar `http://localhost:8081/ws/tickets.wsdl` en SoapUI.
+
+**Dónde está el código:** `infrastructure/soap/` (`TicketsEndpoint`, `FaultExceptionResolver`,
+`UsuarioDelPedidoSoap`, `SoapConfig`). Las clases del pedido y la respuesta se generan desde el XSD al
+compilar (`target/generated-sources/xjc`). El servlet, la ruta `/ws` y la publicación del WSDL salen de
+`spring.webservices` en `application.yml`.
+
+**La copia del contrato:** la imagen Docker se arma solo con esta carpeta y no ve `contracts/`, por eso
+hay una copia en `src/main/resources/soap/`. `ContratoSoapTest` falla si deja de ser igual a
+`contracts/soap/`. Si cambia el contrato, se edita en `contracts/soap/` y se copia acá.
+
 ## Cómo está armado (arquitectura hexagonal)
 
 ![Capas](../docs/diagrams/capas-ticket-service.png)
@@ -184,10 +240,13 @@ Diagramas: [clases](../docs/diagrams/clases-ticket.png) ·
 | **Observer** | `SpringEventPublisherAdapter` → `ReenvioDeEventosListener` | Desacopla "pasó algo" de "a quién se le avisa": el caso de uso publica; el listener reenvía después del commit |
 | **Decorator** | `CasosDeUsoTransaccionales` | Agrega la transacción alrededor de cada caso de uso sin meter Spring en la capa de aplicación |
 | **Ports & Adapters** (hexagonal) | `application/port/in`, `application/port/out`, `infrastructure/*` | El núcleo no depende de la tecnología: cambiar HTTP por un broker en la parte 2 es cambiar un adaptador |
+| **Adapter de entrada** (SOAP) | `infrastructure/soap/TicketsEndpoint` | Un cliente SOAP consulta el estado reusando `ConsultarTicketsUseCase`: traduce el XML al caso de uso y el resultado a XML, sin reglas propias |
 | **Builder** (tests) | `src/test/.../TicketBuilder`, `ClasificacionBuilder` | Armar tickets en cualquier estado para los tests sin constructores largos |
 
 ## Pendiente de acordar
 
+- SOAP: la ruta `/ws/**` y su regla de roles en el api-gateway (hoy el servicio solo se alcanza directo en el
+  puerto 8081), y la justificación del servicio, que es un sistema legado ficticio (ADR-10, propuesta).
 - `motivo` del cambio de estado: se propuso un máximo de 500 caracteres (el contexto no fija uno).
 - `contracts/events/ticket-events.schema.json`: borrador escrito por P2 (productor); falta la
   aprobación de P5 (dueño del formato) y P6.

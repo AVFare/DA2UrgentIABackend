@@ -1,0 +1,336 @@
+{
+  "info": {
+    "name": "UrgentIA - Demo SOAP (Entrega 2)",
+    "description": "Consulta del estado de un ticket por SOAP. Contrato: contracts/soap/tickets.wsdl.\nAntes: docker compose up -d --build --wait. Correr en orden: 0, 1, 2, 3 y los Fault.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "tokenSolicitante",
+      "value": ""
+    },
+    {
+      "key": "tokenAgente",
+      "value": ""
+    },
+    {
+      "key": "ticketId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "0. El WSDL que se publica (publico, sin token)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 y trae la operacion', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.text()).to.include('ConsultarEstadoTicket');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/ws/tickets.wsdl",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "ws",
+            "tickets.wsdl"
+          ]
+        }
+      }
+    },
+    {
+      "name": "1. Login del solicitante",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('login ok', function () { pm.response.to.have.status(200); });",
+              "pm.collectionVariables.set('tokenSolicitante', pm.response.json().accessToken);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{ \"email\": \"solicitante@urgentia.local\", \"password\": \"Usuario123!\" }"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "login"
+          ]
+        }
+      }
+    },
+    {
+      "name": "2. Login del agente de guardia",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('login ok', function () { pm.response.to.have.status(200); });",
+              "pm.collectionVariables.set('tokenAgente', pm.response.json().accessToken);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{ \"email\": \"guardia@urgentia.local\", \"password\": \"Agente123!\" }"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "login"
+          ]
+        }
+      }
+    },
+    {
+      "name": "3. El solicitante crea el ticket critico (el de la demo)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('201', function () { pm.response.to.have.status(201); });",
+              "pm.collectionVariables.set('ticketId', pm.response.json().id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenSolicitante}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"No puede ingresar nadie\",\n  \"descripcion\": \"Producción caída, todos los usuarios bloqueados en el login desde las 9\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/tickets",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "tickets"
+          ]
+        }
+      }
+    },
+    {
+      "name": "4. SOAP: consultar el estado de ese mismo ticket (ESCALADO, P1 y SLA)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', function () { pm.response.to.have.status(200); });",
+              "pm.test('ESCALADO y P1', function () {",
+              "  const t = pm.response.text();",
+              "  pm.expect(t).to.include('ESCALADO');",
+              "  pm.expect(t).to.include('P1');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "text/xml; charset=utf-8"
+          },
+          {
+            "key": "SOAPAction",
+            "value": "\"http://urgentia.local/ws/tickets/ConsultarEstadoTicket\""
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenAgente}}"
+          },
+          {
+            "key": "X-Correlation-Id",
+            "value": "demo-soap-1"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:t=\"http://urgentia.local/ws/tickets\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <t:ConsultarEstadoTicketRequest>\n      <t:ticketId>{{ticketId}}</t:ticketId>\n    </t:ConsultarEstadoTicketRequest>\n  </soapenv:Body>\n</soapenv:Envelope>"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/ws/tickets",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "ws",
+            "tickets"
+          ]
+        },
+        "description": "Esperado: estado ESCALADO, prioridad P1 y fechaLimiteSla."
+      }
+    },
+    {
+      "name": "5. SOAP Fault: ticket inexistente (NO_ENCONTRADO)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Fault NO_ENCONTRADO', function () {",
+              "  pm.response.to.have.status(500);",
+              "  pm.expect(pm.response.text()).to.include('NO_ENCONTRADO');",
+              "  pm.expect(pm.response.text()).to.include('demo-soap-2');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "text/xml; charset=utf-8"
+          },
+          {
+            "key": "SOAPAction",
+            "value": "\"http://urgentia.local/ws/tickets/ConsultarEstadoTicket\""
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenAgente}}"
+          },
+          {
+            "key": "X-Correlation-Id",
+            "value": "demo-soap-2"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:t=\"http://urgentia.local/ws/tickets\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <t:ConsultarEstadoTicketRequest>\n      <t:ticketId>7c9e6679-7425-40de-944b-e07fc1f90ae7</t:ticketId>\n    </t:ConsultarEstadoTicketRequest>\n  </soapenv:Body>\n</soapenv:Envelope>"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/ws/tickets",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "ws",
+            "tickets"
+          ]
+        },
+        "description": "Esperado: HTTP 500 con un Fault soap:Client y detalle NO_ENCONTRADO; el correlationId es el que se mando."
+      }
+    },
+    {
+      "name": "6. SOAP Fault: id mal formado (VALIDACION)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Fault VALIDACION', function () {",
+              "  pm.response.to.have.status(500);",
+              "  pm.expect(pm.response.text()).to.include('VALIDACION');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "text/xml; charset=utf-8"
+          },
+          {
+            "key": "SOAPAction",
+            "value": "\"http://urgentia.local/ws/tickets/ConsultarEstadoTicket\""
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenAgente}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:t=\"http://urgentia.local/ws/tickets\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <t:ConsultarEstadoTicketRequest>\n      <t:ticketId>esto-no-es-un-uuid</t:ticketId>\n    </t:ConsultarEstadoTicketRequest>\n  </soapenv:Body>\n</soapenv:Envelope>"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/ws/tickets",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "ws",
+            "tickets"
+          ]
+        },
+        "description": "Esperado: HTTP 500 con un Fault soap:Client y detalle VALIDACION."
+      }
+    }
+  ]
+}
