@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.config import settings
+from app.consumers.eventos_consumer import ConsumidorEventos
 from app.db import get_db
 from app.endpoints import eventos, health, notificaciones
 from app.exceptions.handlers import registrar_handlers
@@ -20,7 +21,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     db = get_db()
     NotificacionRepository(db).ensure_indexes()
     EventoProcesadoRepository(db).ensure_indexes()
-    yield
+
+    consumidor = None
+    if settings.rabbitmq_url:
+        consumidor = ConsumidorEventos(
+            settings.rabbitmq_url, settings.rabbitmq_cola, settings.rabbitmq_prefetch, obtener_db=get_db
+        )
+        consumidor.iniciar()
+    try:
+        yield
+    finally:
+        if consumidor is not None:
+            consumidor.detener()
 
 
 def create_app() -> FastAPI:
