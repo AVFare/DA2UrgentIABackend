@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://urgentia.local/contracts/events/clasificacion-events.schema.json",
+  "title": "Mensajes de clasificacion (UrgentIA)",
+  "description": "Pedido y respuesta de la clasificacion asincronica (Entrega 2). Usan el mismo sobre que los eventos de ticket (seccion 10.1 del contexto); solo cambian eventType, source y payload. Viajan por el exchange privado urgentia.clasificacion (contracts/messaging/), nunca por urgentia.eventos: ClasificacionSolicitada lleva la descripcion del ticket, que no sale en los eventos de dominio (ADR-07).",
+  "type": "object",
+  "required": ["eventId", "eventType", "version", "occurredAt", "correlationId", "source", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "eventId": {
+      "description": "Id unico del mensaje (UUID v4). El consumidor lo usa para la idempotencia.",
+      "$ref": "#/$defs/uuid"
+    },
+    "eventType": {
+      "enum": ["ClasificacionSolicitada", "ClasificacionGenerada"]
+    },
+    "version": {
+      "description": "Version del formato del sobre.",
+      "const": 1
+    },
+    "occurredAt": {
+      "$ref": "#/$defs/fecha"
+    },
+    "correlationId": {
+      "description": "El X-Correlation-Id del pedido que creo el ticket. ClasificacionGenerada repite el de su ClasificacionSolicitada.",
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "enum": ["ticket-service", "classification-service"]
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "eventType": { "const": "ClasificacionSolicitada" } } },
+      "then": {
+        "properties": {
+          "source": { "const": "ticket-service" },
+          "payload": { "$ref": "#/$defs/clasificacionSolicitada" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "eventType": { "const": "ClasificacionGenerada" } } },
+      "then": {
+        "properties": {
+          "source": { "const": "classification-service" },
+          "payload": { "$ref": "#/$defs/clasificacionGenerada" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "fecha": {
+      "description": "ISO-8601 en UTC con Z, por ejemplo 2026-10-05T14:03:11Z.",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+    },
+    "clasificacionSolicitada": {
+      "description": "Lo mismo que el cuerpo de POST /api/clasificaciones (ClasificarRequest en contracts/classification-service.yaml).",
+      "type": "object",
+      "required": ["ticketId", "titulo", "descripcion"],
+      "additionalProperties": false,
+      "properties": {
+        "ticketId": { "$ref": "#/$defs/uuid" },
+        "titulo": { "type": "string", "minLength": 5, "maxLength": 120 },
+        "descripcion": {
+          "description": "Texto completo del ticket. Solo viaja en esta cola privada; classification-service lo enmascara antes de llamar al LLM.",
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 2000
+        }
+      }
+    },
+    "clasificacionGenerada": {
+      "description": "Resultado de la clasificacion. Si resultado es CLASIFICADO viene clasificacion; si es ERROR viene error y ticket-service deja el ticket en PENDIENTE_CLASIFICACION (se puede reclasificar por REST).",
+      "type": "object",
+      "required": ["ticketId", "resultado"],
+      "additionalProperties": false,
+      "properties": {
+        "ticketId": { "$ref": "#/$defs/uuid" },
+        "resultado": { "enum": ["CLASIFICADO", "ERROR"] },
+        "clasificacion": { "$ref": "#/$defs/clasificacion" },
+        "error": { "$ref": "#/$defs/error" }
+      },
+      "oneOf": [
+        {
+          "properties": { "resultado": { "const": "CLASIFICADO" } },
+          "required": ["clasificacion"],
+          "not": { "required": ["error"] }
+        },
+        {
+          "properties": { "resultado": { "const": "ERROR" } },
+          "required": ["error"],
+          "not": { "required": ["clasificacion"] }
+        }
+      ]
+    },
+    "clasificacion": {
+      "description": "Los mismos campos que ClasificacionResponse de contracts/classification-service.yaml. La IA sugiere; la prioridad la calcula ticket-service.",
+      "type": "object",
+      "required": [
+        "id", "categoria", "urgencia", "impacto", "moduloAfectado", "requiereEscalamiento",
+        "confianza", "justificacion", "proveedor", "modelo", "versionPrompt", "latenciaMs", "fecha"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "description": "ObjectId de la clasificacion guardada en MongoDB.", "type": "string" },
+        "categoria": { "enum": ["INCIDENTE", "SOLICITUD", "CONSULTA", "BUG"] },
+        "urgencia": { "enum": ["ALTA", "MEDIA", "BAJA"] },
+        "impacto": { "enum": ["ALTO", "MEDIO", "BAJO"] },
+        "moduloAfectado": {
+          "enum": ["AUTENTICACION", "FACTURACION", "PAGOS", "REPORTES", "INFRAESTRUCTURA", "BASE_DE_DATOS", "INTEGRACIONES", "OTRO"]
+        },
+        "requiereEscalamiento": { "type": "boolean" },
+        "confianza": { "type": "number", "minimum": 0, "maximum": 1 },
+        "justificacion": { "type": "string", "maxLength": 300 },
+        "proveedor": { "description": "Valor de LLM_PROVIDER.", "type": "string" },
+        "modelo": { "type": "string" },
+        "versionPrompt": { "type": "string" },
+        "latenciaMs": { "type": "integer", "minimum": 0 },
+        "fecha": { "$ref": "#/$defs/fecha" }
+      }
+    },
+    "error": {
+      "description": "Por que no se pudo clasificar. Mismos codigos que el REST de classification-service.",
+      "type": "object",
+      "required": ["codigo", "mensaje"],
+      "additionalProperties": false,
+      "properties": {
+        "codigo": { "enum": ["LLM_TIMEOUT", "LLM_RESPUESTA_INVALIDA", "ERROR_INTERNO"] },
+        "mensaje": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "examples": [
+    {
+      "eventId": "5a7c9e11-2b3d-4c5e-8f60-718293a4b5c6",
+      "eventType": "ClasificacionSolicitada",
+      "version": 1,
+      "occurredAt": "2026-11-20T14:03:10Z",
+      "correlationId": "a8e1b2c3-0000-4000-8000-000000000000",
+      "source": "ticket-service",
+      "payload": {
+        "ticketId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+        "titulo": "No puede ingresar nadie",
+        "descripcion": "Producción caída, todos los usuarios bloqueados en el login desde las 9"
+      }
+    },
+    {
+      "eventId": "6b8daf22-3c4e-4d6f-9071-8293a4b5c6d7",
+      "eventType": "ClasificacionGenerada",
+      "version": 1,
+      "occurredAt": "2026-11-20T14:03:12Z",
+      "correlationId": "a8e1b2c3-0000-4000-8000-000000000000",
+      "source": "classification-service",
+      "payload": {
+        "ticketId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+        "resultado": "CLASIFICADO",
+        "clasificacion": {
+          "id": "6739f1c2e4b0a1b2c3d4e5f6",
+          "categoria": "INCIDENTE",
+          "urgencia": "ALTA",
+          "impacto": "ALTO",
+          "moduloAfectado": "AUTENTICACION",
+          "requiereEscalamiento": true,
+          "confianza": 0.93,
+          "justificacion": "Caída total del login en producción que afecta a todos los usuarios",
+          "proveedor": "mock",
+          "modelo": "mock",
+          "versionPrompt": "full",
+          "latenciaMs": 12,
+          "fecha": "2026-11-20T14:03:12Z"
+        }
+      }
+    },
+    {
+      "eventId": "7c9eb033-4d5f-4e70-8182-93a4b5c6d7e8",
+      "eventType": "ClasificacionGenerada",
+      "version": 1,
+      "occurredAt": "2026-11-20T14:03:17Z",
+      "correlationId": "a8e1b2c3-0000-4000-8000-000000000000",
+      "source": "classification-service",
+      "payload": {
+        "ticketId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+        "resultado": "ERROR",
+        "error": { "codigo": "LLM_TIMEOUT", "mensaje": "El LLM no respondió en 5000 ms" }
+      }
+    }
+  ]
+}

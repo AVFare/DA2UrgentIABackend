@@ -1,0 +1,193 @@
+{
+  "rabbit_version": "4.1.0",
+  "vhosts": [{ "name": "/" }],
+  "exchanges": [
+    {
+      "name": "urgentia.eventos",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "urgentia.clasificacion",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "urgentia.dlx",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "notificaciones.eventos",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 5,
+        "x-dead-letter-exchange": "urgentia.dlx",
+        "x-dead-letter-routing-key": "notificaciones.eventos.dlq"
+      }
+    },
+    {
+      "name": "reportes.eventos",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 5,
+        "x-dead-letter-exchange": "urgentia.dlx",
+        "x-dead-letter-routing-key": "reportes.eventos.dlq"
+      }
+    },
+    {
+      "name": "clasificacion.solicitudes",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 5,
+        "x-dead-letter-exchange": "urgentia.dlx",
+        "x-dead-letter-routing-key": "clasificacion.solicitudes.dlq"
+      }
+    },
+    {
+      "name": "tickets.clasificaciones",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 5,
+        "x-dead-letter-exchange": "urgentia.dlx",
+        "x-dead-letter-routing-key": "tickets.clasificaciones.dlq"
+      }
+    },
+    {
+      "name": "notificaciones.eventos.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": { "x-queue-type": "quorum" }
+    },
+    {
+      "name": "reportes.eventos.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": { "x-queue-type": "quorum" }
+    },
+    {
+      "name": "clasificacion.solicitudes.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": { "x-queue-type": "quorum" }
+    },
+    {
+      "name": "tickets.clasificaciones.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": { "x-queue-type": "quorum" }
+    }
+  ],
+  "bindings": [
+    {
+      "source": "urgentia.eventos",
+      "vhost": "/",
+      "destination": "notificaciones.eventos",
+      "destination_type": "queue",
+      "routing_key": "TicketEscalado",
+      "arguments": {}
+    },
+    {
+      "source": "urgentia.eventos",
+      "vhost": "/",
+      "destination": "notificaciones.eventos",
+      "destination_type": "queue",
+      "routing_key": "TicketAsignado",
+      "arguments": {}
+    },
+    {
+      "source": "urgentia.eventos",
+      "vhost": "/",
+      "destination": "notificaciones.eventos",
+      "destination_type": "queue",
+      "routing_key": "TicketResuelto",
+      "arguments": {}
+    },
+    {
+      "source": "urgentia.eventos",
+      "vhost": "/",
+      "destination": "reportes.eventos",
+      "destination_type": "queue",
+      "routing_key": "#",
+      "arguments": {}
+    },
+    {
+      "source": "urgentia.clasificacion",
+      "vhost": "/",
+      "destination": "clasificacion.solicitudes",
+      "destination_type": "queue",
+      "routing_key": "ClasificacionSolicitada",
+      "arguments": {}
+    },
+    {
+      "source": "urgentia.clasificacion",
+      "vhost": "/",
+      "destination": "tickets.clasificaciones",
+      "destination_type": "queue",
+      "routing_key": "ClasificacionGenerada",
+      "arguments": {}
+    },
+    {
+      "source": "urgentia.dlx",
+      "vhost": "/",
+      "destination": "notificaciones.eventos.dlq",
+      "destination_type": "queue",
+      "routing_key": "notificaciones.eventos.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "urgentia.dlx",
+      "vhost": "/",
+      "destination": "reportes.eventos.dlq",
+      "destination_type": "queue",
+      "routing_key": "reportes.eventos.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "urgentia.dlx",
+      "vhost": "/",
+      "destination": "clasificacion.solicitudes.dlq",
+      "destination_type": "queue",
+      "routing_key": "clasificacion.solicitudes.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "urgentia.dlx",
+      "vhost": "/",
+      "destination": "tickets.clasificaciones.dlq",
+      "destination_type": "queue",
+      "routing_key": "tickets.clasificaciones.dlq",
+      "arguments": {}
+    }
+  ]
+}
