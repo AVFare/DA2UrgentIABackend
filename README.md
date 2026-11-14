@@ -109,6 +109,10 @@ se acceden por el gateway con un JWT de AGENTE o ADMIN; los eventos de P6 quedan
 Los valores de `.env.example` sirven para desarrollo. El archivo `.env` no se sube al
 repositorio.
 
+El paso a paso completo para una máquina limpia (requisitos en Windows y Linux, cómo verificar
+cada servicio, cómo resetear y problemas comunes) está en el
+[manual de despliegue](docs/manual-despliegue.md).
+
 ## Demo
 
 Con todo levantado, el flujo de la demo (login, ticket crítico, notificación a la guardia,
