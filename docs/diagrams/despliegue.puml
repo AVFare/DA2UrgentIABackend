@@ -30,6 +30,8 @@ node "Host con Docker" as host {
       database "tickets_db" as ticketsdb
     }
 
+    node "rabbitmq\nRabbitMQ 4 + consola de administracion\n:5672 AMQP - :15672 consola" as rmq <<contenedor>>
+
     node "mongo\nMongoDB 7\n:27017" as mongo <<contenedor>> {
       database "classification_db" as classdb
       database "notifications_db" as notifdb
@@ -39,6 +41,7 @@ node "Host con Docker" as host {
 
   storage "volumen pgdata" as pgdata
   storage "volumen mongodata" as mongodata
+  storage "volumen rabbitdata" as rabbitdata
 }
 
 us -[hidden]right- ts
@@ -57,6 +60,13 @@ ts -right-> cs : REST\n(timeout 7 s)
 ts ..> ns : eventos\nPOST /api/eventos
 ts ..> rs : eventos\nPOST /api/eventos
 
+'' Mensajeria: los cuatro servicios que producen o consumen mensajes
+' se conectan al broker con RABBITMQ_URL. Las colas las define contracts/messaging/.
+ts --> rmq : AMQP
+cs --> rmq : AMQP
+ns --> rmq : AMQP
+rs --> rmq : AMQP
+
 ' Cada servicio usa solo su base.
 us --> usersdb
 ts --> ticketsdb
@@ -66,6 +76,7 @@ rs --> repdb
 
 pg ..> pgdata : datos
 mongo ..> mongodata : datos
+rmq ..> rabbitdata : datos
 
 cs -right-> llm : HTTPS
 
@@ -73,7 +84,9 @@ note bottom of host
   Solo api-gateway publica un puerto hacia afuera.
   Los servicios se llaman entre si por su nombre
   (por ejemplo http://ticket-service:8081).
-  En desarrollo, postgres y mongo publican su puerto
-  solo en 127.0.0.1 para usarlos desde el IDE.
+  En desarrollo, postgres, mongo y rabbitmq publican su puerto
+  solo en 127.0.0.1 para usarlos desde el IDE;
+  la consola de RabbitMQ queda en http://localhost:15672.
+  user-service y api-gateway no usan el broker.
 end note
 @enduml
