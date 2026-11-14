@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://urgentia.local/contracts/events/clasificacion-events.schema.json",
   "title": "Mensajes de clasificacion (UrgentIA)",
-  "description": "Pedido y respuesta de la clasificacion asincronica (Entrega 2). Usan el mismo sobre que los eventos de ticket (seccion 10.1 del contexto); solo cambian eventType, source y payload. Viajan por el exchange privado urgentia.clasificacion (contracts/messaging/), nunca por urgentia.eventos: ClasificacionSolicitada lleva la descripcion del ticket, que no sale en los eventos de dominio (ADR-07). Duenos: P5 (formato), P2 (ticket-service) y P4 (classification-service).",
+  "description": "Pedido y respuesta de la clasificacion asincronica (Entrega 2). Usan el mismo sobre que los eventos de ticket (seccion 10.1 del contexto); solo cambian eventType, source y payload. Viajan por el exchange privado urgentia.clasificacion (contracts/messaging/), nunca por urgentia.eventos: ClasificacionSolicitada lleva la descripcion del ticket, que no sale en los eventos de dominio (ADR-07).",
   "type": "object",
   "required": ["eventId", "eventType", "version", "occurredAt", "correlationId", "source", "payload"],
   "additionalProperties": false,

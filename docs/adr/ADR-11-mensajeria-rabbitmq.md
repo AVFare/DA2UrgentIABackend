@@ -30,4 +30,4 @@ En la Entrega 1, ticket-service manda cada evento por HTTP a cada suscriptor (`H
 - Un servicio más en el Compose, del que dependen ticket-service, classification-service, notification-service y reporting-service.
 - El orden entre eventos de un mismo ticket no está garantizado; los consumidores ya lo toleran (idempotencia y descarte de eventos viejos en reportes).
 - Las DLQ hay que mirarlas: un mensaje ahí es un error a revisar a mano.
-- `POST /api/eventos` de notification-service y reporting-service se quita cuando el broker esté estable (con P6).
+- `POST /api/eventos` de notification-service y reporting-service se quita cuando el broker esté estable.

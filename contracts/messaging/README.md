@@ -1,6 +1,6 @@
 # Contrato de mensajería (RabbitMQ)
 
-Dueño: P5. Lo consumen P1 (Compose), P2 (ticket-service), P4 (classification-service), P5 (notification-service) y P6 (reporting-service). Cambiarlo sigue la regla de contract-first: aviso en el grupo y aprobación de quien lo consume.
+Lo usan ticket-service, classification-service, notification-service y reporting-service, y el Compose para cargar la topología. Cambiarlo sigue la regla de contract-first: aviso en el grupo y aprobación de quien lo consume.
 
 | Archivo | Qué es |
 |---|---|
@@ -71,16 +71,18 @@ Todas las colas son **quorum** y durables. Las colas de trabajo tienen `x-delive
 
 Una DLQ con mensajes es una alarma: se revisa a mano en la consola (`http://localhost:15672`), se corrige y, si corresponde, se reenvía.
 
-## Cargar la topología en el Compose (para P1)
+## Cargar la topología en el Compose
 
-**Ojo:** si RabbitMQ carga definiciones **al arrancar** (`load_definitions` en `rabbitmq.conf`), **no crea el usuario por defecto** (`RABBITMQ_DEFAULT_USER`), porque el archivo no trae usuarios, y nadie se puede conectar. En el log aparece: `Will not seed default virtual host and user: have definitions to load`.
+El servicio `rabbitmq` ya está en el `docker-compose.yml`, con el usuario de `RABBITMQ_USER` / `RABBITMQ_PASSWORD` del `.env`, y cada servicio recibe `RABBITMQ_URL`. Falta cargar esta topología, porque RabbitMQ arranca sin exchanges ni colas.
 
-Lo que sí funciona, probado con `rabbitmq:4-management`:
+**No usar `load_definitions` en `rabbitmq.conf`:** si RabbitMQ carga definiciones al arrancar, no crea el usuario de `RABBITMQ_DEFAULT_USER` (este archivo no trae usuarios) y nadie se puede conectar. En el log aparece: `Will not seed default virtual host and user: have definitions to load`.
 
-1. RabbitMQ arranca con `RABBITMQ_DEFAULT_USER` y `RABBITMQ_DEFAULT_PASS` del `.env`, sin `load_definitions`.
-2. Un servicio de un solo uso, cuando RabbitMQ está sano, carga el archivo por la API de administración:
+Lo que funciona, probado con `rabbitmq:4-management`:
+
+1. RabbitMQ arranca como está hoy, con el usuario del `.env`.
+2. Un servicio de un solo uso, cuando `rabbitmq` está sano, carga el archivo por la API de administración:
    ```bash
-   curl -fsS -u "$RABBITMQ_USER:$RABBITMQ_PASS" -H 'content-type: application/json' \
+   curl -fsS -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -H 'content-type: application/json' \
         -X POST http://rabbitmq:15672/api/definitions -d @/definitions.json
    ```
    Responde `204`. Es idempotente: se puede correr en cada arranque.
