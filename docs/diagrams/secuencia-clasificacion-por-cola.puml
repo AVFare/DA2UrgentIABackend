@@ -1,0 +1,57 @@
+@startuml secuencia-clasificacion-por-cola
+title UrgentIA - Clasificacion por cola de mensajes (RabbitMQ)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+autonumber
+
+participant "ticket-service" as T
+queue "tickets.clasificaciones" as TQ
+queue "urgentia.clasificacion\n(exchange direct)" as X
+queue "clasificacion.solicitudes" as Q
+participant "classification-service\n(worker)" as C
+database "classification_db" as CDB
+participant "Proveedor LLM" as LLM
+queue "clasificacion.solicitudes.dlq" as DLQ
+
+T -> X : ClasificacionSolicitada\n(routing key ClasificacionSolicitada)
+X -> Q
+Q -> C : entrega la solicitud
+activate C
+C -> CDB : buscar por solicitudId (eventId)
+alt la solicitud ya fue clasificada
+  CDB --> C : registro guardado
+else es nueva
+  C -> C : enmascarar y armar el prompt
+  C -> LLM : POST /chat/completions (timeout 5 s)
+  alt el LLM responde una clasificacion valida
+    LLM --> C : clasificacion
+    C -> CDB : guardar con solicitudId
+  else error, timeout o respuesta invalida
+    LLM --> C : error
+    note right of C : no se guarda nada
+  end
+end
+C -> X : ClasificacionGenerada\n(resultado CLASIFICADO o ERROR,\ncon confirmacion del broker)
+X -> TQ
+TQ -> T : ClasificacionGenerada
+C -> Q : ack
+deactivate C
+
+== Si falla la base o la publicacion ==
+Q -> C : entrega la solicitud
+activate C
+C -> C : error transitorio
+C -> Q : reject con requeue (vuelve a la cola)
+deactivate C
+note over Q, C
+  RabbitMQ cuenta las entregas:
+  hasta 5 reintentos (x-delivery-limit: 5).
+end note
+Q -> DLQ : por urgentia.dlx, a la cola de mensajes muertos
+
+== Si el mensaje no cumple el contrato ==
+Q -> C : entrega la solicitud
+C -> Q : reject sin requeue
+Q -> DLQ : directo, sin reintentos
+@enduml
