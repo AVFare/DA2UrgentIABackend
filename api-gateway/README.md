@@ -65,6 +65,7 @@ Cada pedido atraviesa tres filtros, siempre en este orden, antes de llegar a un 
 - `POST /api/auth/login`
 - `GET /health`
 - `GET /swagger-ui.html`, `/swagger-ui/**`, `/webjars/**`, `/v3/api-docs/**`, `/docs/**`
+- `GET /ws/tickets.wsdl`, `/ws/tickets-schema.xsd` (contrato SOAP, para importarlo en SoapUI o Postman sin token)
 
 ### Tabla de roles
 
@@ -74,10 +75,12 @@ Cada pedido atraviesa tres filtros, siempre en este orden, antes de llegar a un 
 | `GET /api/usuarios/**` | AGENTE, ADMIN |
 | `GET` y `POST /api/tickets`, `GET /api/tickets/{id}` | SOLICITANTE, AGENTE, ADMIN |
 | `PATCH /api/tickets/{id}/asignacion`, `PATCH /api/tickets/{id}/estado`, `POST /api/tickets/{id}/reclasificacion` | AGENTE, ADMIN |
+| `POST /ws/tickets` (SOAP) | SOLICITANTE, AGENTE, ADMIN |
 | `GET` y `POST /api/clasificaciones/**` | ADMIN |
 | `GET /api/notificaciones/**`, `GET /api/reportes/**` | AGENTE, ADMIN |
 
-Que un SOLICITANTE vea solo sus propios tickets lo resuelve ticket-service con `X-User-Id`.
+Que un SOLICITANTE vea solo sus propios tickets lo resuelve ticket-service con `X-User-Id`,
+tanto por REST como por SOAP.
 
 ### A qué servicio va cada ruta
 
@@ -85,6 +88,7 @@ Que un SOLICITANTE vea solo sus propios tickets lo resuelve ticket-service con `
 |---|---|
 | `/api/auth/**`, `/api/usuarios/**` | user-service |
 | `/api/tickets/**` | ticket-service |
+| `/ws/**` | ticket-service (SOAP) |
 | `/api/clasificaciones/**` | classification-service |
 | `/api/notificaciones/**` | notification-service |
 | `/api/reportes/**` | reporting-service |
@@ -125,9 +129,9 @@ Si un log trae una excepción, se agrega el campo `stackTrace`. El formato lo de
 mvn test
 ```
 
-Son 52 tests, casi todos de integración. Levantan el gateway completo y, en lugar de los servicios
+Son 64 tests, casi todos de integración. Levantan el gateway completo y, en lugar de los servicios
 reales, un servicio de mentira (`ServicioFalso`) que registra qué le llegó. Cubren las
-rutas, los tres filtros, los errores 401 y 403, `/health`, el Swagger unificado y el formato de los logs.
+rutas, los tres filtros, los errores 401 y 403, `/health`, el Swagger unificado, la ruta del SOAP y el formato de los logs.
 
 ## Patrones aplicados
 

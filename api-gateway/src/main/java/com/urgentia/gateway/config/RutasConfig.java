@@ -25,6 +25,10 @@ public class RutasConfig {
                 .route("ticket-service", r -> r
                         .path("/api/tickets", "/api/tickets/**")
                         .uri(ticketService))
+                // Servicio SOAP de ticket-service: endpoint, WSDL y XSD (ADR-10).
+                .route("ticket-service-soap", r -> r
+                        .path("/ws/**")
+                        .uri(ticketService))
                 .route("classification-service", r -> r
                         .path("/api/clasificaciones", "/api/clasificaciones/**")
                         .uri(classificationService))
