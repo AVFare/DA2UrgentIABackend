@@ -127,6 +127,11 @@ reportes y controles del gateway) se puede correr de cuatro formas:
 | IntelliJ IDEA Ultimate | Abrir [`demo.http`](demo.http) y ejecutar los pedidos en orden |
 | Swagger | Seguir [`docs/demo/demo-swagger.md`](docs/demo/demo-swagger.md) |
 
+## Componente de IA
+
+- [Requisitos, decisiones y validación del componente de IA](docs/ia/requisitos-y-decisiones.md):
+  exactitud, latencia y privacidad, con los resultados de la evaluación de 20 casos.
+
 ## Estructura del repositorio
 
 ```
