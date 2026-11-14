@@ -84,9 +84,9 @@ Si sos una IA ayudando a un integrante del equipo:
 | `notification-service` | 8084 | Python 3.12, FastAPI, Pydantic | MongoDB `notifications_db` | P5 | Consume eventos y registra/envía notificaciones (email simulado) |
 | `reporting-service` | 8085 | Node 20, NestJS, TypeScript | MongoDB `reporting_db` | P6 | Lado de lectura (CQRS): proyecta eventos y expone reportes y SLA |
 
-Infraestructura en Compose: `postgres` (postgres:16, puerto 5432) y `mongo` (mongo:7, puerto 27017).
+Infraestructura en Compose: `postgres` (postgres:16, puerto 5432), `mongo` (mongo:7, puerto 27017) y `rabbitmq` (rabbitmq:4-management, AMQP en 5672 y consola de administración en 15672).
 Nombres DNS internos = nombre del servicio en Compose (ej.: `http://ticket-service:8081`).
-En desarrollo, `postgres` y `mongo` publican su puerto solo en `127.0.0.1`, para poder usarlos desde el IDE.
+En desarrollo, `postgres`, `mongo` y `rabbitmq` publican sus puertos solo en `127.0.0.1`, para poder usarlos desde el IDE. La consola de RabbitMQ queda en http://localhost:15672 con `RABBITMQ_USER` / `RABBITMQ_PASSWORD`.
 
 **Versión de Spring Boot (servicios Java):** 3.5.16, con Spring Cloud 2025.0.3 donde haga falta. start.spring.io ya no ofrece Spring Boot 3: generar el proyecto ahí y reemplazar el bloque `<parent>` por el de `api-gateway/pom.xml`. No usar Spring Boot 4.
 
@@ -951,6 +951,11 @@ CLASSIFICATION_DB_PASSWORD=classification_pass
 NOTIFICATIONS_DB_PASSWORD=notifications_pass
 REPORTING_DB_PASSWORD=reporting_pass
 
+# RabbitMQ (consola de administracion: http://localhost:15672)
+# Sin caracteres especiales: el Compose los arma en RABBITMQ_URL (amqp://usuario:clave@rabbitmq:5672)
+RABBITMQ_USER=urgentia
+RABBITMQ_PASSWORD=rabbit_pass
+
 # IA
 LLM_PROVIDER=mock
 LLM_API_KEY=
@@ -973,14 +978,16 @@ CORS_ALLOWED_ORIGINS=http://localhost:5173
 |---|---|
 | api-gateway | `JWT_SECRET`, `USER_SERVICE_URL=http://user-service:8083`, `TICKET_SERVICE_URL=http://ticket-service:8081`, `CLASSIFICATION_SERVICE_URL=http://classification-service:8082`, `NOTIFICATION_SERVICE_URL=http://notification-service:8084`, `REPORTING_SERVICE_URL=http://reporting-service:8085`, `CORS_ALLOWED_ORIGINS=http://localhost:5173` |
 | user-service | `DB_URL=jdbc:postgresql://postgres:5432/users_db`, `DB_USER=users_user`, `DB_PASSWORD`, `JWT_SECRET`, `JWT_EXPIRATION_MINUTES` |
-| ticket-service | `DB_URL=jdbc:postgresql://postgres:5432/tickets_db`, `DB_USER=tickets_user`, `DB_PASSWORD`, `CLASSIFICATION_URL=http://classification-service:8082`, `CLASSIFICATION_TIMEOUT_MS`, `EVENT_SUBSCRIBERS=http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos` |
-| classification-service | `MONGO_URI=mongodb://classification_user:<pass>@mongo:27017/classification_db`, `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LLM_TIMEOUT_MS`, `PROMPT_VERSION` |
-| notification-service | `MONGO_URI=mongodb://notifications_user:<pass>@mongo:27017/notifications_db` |
-| reporting-service | `MONGO_URI=mongodb://reporting_user:<pass>@mongo:27017/reporting_db` |
+| ticket-service | `DB_URL=jdbc:postgresql://postgres:5432/tickets_db`, `DB_USER=tickets_user`, `DB_PASSWORD`, `CLASSIFICATION_URL=http://classification-service:8082`, `CLASSIFICATION_TIMEOUT_MS`, `EVENT_SUBSCRIBERS=http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos`, `RABBITMQ_URL` |
+| classification-service | `MONGO_URI=mongodb://classification_user:<pass>@mongo:27017/classification_db`, `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LLM_TIMEOUT_MS`, `PROMPT_VERSION`, `RABBITMQ_URL` |
+| notification-service | `MONGO_URI=mongodb://notifications_user:<pass>@mongo:27017/notifications_db`, `RABBITMQ_URL` |
+| reporting-service | `MONGO_URI=mongodb://reporting_user:<pass>@mongo:27017/reporting_db`, `RABBITMQ_URL` |
+
+`RABBITMQ_URL=amqp://<usuario>:<clave>@rabbitmq:5672` la arma el Compose con `RABBITMQ_USER` y `RABBITMQ_PASSWORD`. Python (pika) y Node (amqplib) la usan tal cual; en Spring Boot va en `spring.rabbitmq.addresses: ${RABBITMQ_URL}`.
 
 ### 14.3 `docker-compose.yml`
 
-`postgres`, `mongo` y `api-gateway` ya están en el archivo del repo, que es el que vale. Cada dueño suma la entrada de su servicio siguiendo el ejemplo de `ticket-service`.
+`postgres`, `mongo`, `rabbitmq` y `api-gateway` ya están en el archivo del repo, que es el que vale. Cada dueño suma la entrada de su servicio siguiendo el ejemplo de `ticket-service`.
 
 ```yaml
 services:
@@ -1020,6 +1027,25 @@ services:
       retries: 10
     networks: [urgentia-net]
 
+  rabbitmq:
+    image: rabbitmq:4-management
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 10s
+      start_period: 20s
+      retries: 10
+    networks: [urgentia-net]
+
   api-gateway:
     build: ./api-gateway
     ports:
@@ -1048,8 +1074,10 @@ services:
       DB_PASSWORD: ${TICKETS_DB_PASSWORD}
       CLASSIFICATION_URL: http://classification-service:8082
       EVENT_SUBSCRIBERS: http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
     depends_on:
       postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }   # solo los servicios que usan el broker
     networks: [urgentia-net]
 
   # user-service, classification-service, notification-service y reporting-service: mismo patrón
@@ -1057,6 +1085,7 @@ services:
 volumes:
   pgdata:
   mongodata:
+  rabbitdata:
 
 networks:
   urgentia-net:

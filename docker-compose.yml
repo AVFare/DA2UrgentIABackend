@@ -40,6 +40,29 @@ services:
       retries: 10
     networks: [urgentia-net]
 
+  rabbitmq:
+    image: rabbitmq:4-management
+    # RabbitMQ guarda los datos bajo el nombre del nodo (rabbit@<hostname>). Con el
+    # hostname fijo, el volumen sigue valiendo cuando se recrea el contenedor.
+    hostname: rabbitmq
+    environment:
+      # El usuario guest solo puede conectarse desde localhost: los servicios usan este.
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "127.0.0.1:5672:5672"     # AMQP, para usarlo desde el IDE
+      - "127.0.0.1:15672:15672"   # consola de administracion
+    volumes:
+      - rabbitdata:/var/lib/rabbitmq
+    healthcheck:
+      # Da "sano" cuando el puerto AMQP ya acepta conexiones, no solo cuando el nodo arranco.
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 10s
+      start_period: 20s
+      retries: 10
+    networks: [urgentia-net]
+
   api-gateway:
     build: ./api-gateway
     ports:
@@ -85,9 +108,12 @@ services:
       CLASSIFICATION_URL: http://classification-service:8082
       CLASSIFICATION_TIMEOUT_MS: ${CLASSIFICATION_TIMEOUT_MS:-7000}
       EVENT_SUBSCRIBERS: http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8081/health"]
@@ -105,12 +131,15 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-5000}
       PROMPT_VERSION: ${PROMPT_VERSION:-full}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     # Para LLM_PROVIDER=ollama: llega al Ollama instalado en la maquina (en Linux no existe por defecto).
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       mongo:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       # La imagen python:3.12-slim no trae curl.
@@ -123,9 +152,12 @@ services:
     build: ./notification-service
     environment:
       MONGO_URI: mongodb://notifications_user:${NOTIFICATIONS_DB_PASSWORD}@mongo:27017/notifications_db
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       mongo:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       # La imagen python:3.12-slim no trae curl.
@@ -138,9 +170,12 @@ services:
     build: ./reporting-service
     environment:
       MONGO_URI: mongodb://reporting_user:${REPORTING_DB_PASSWORD}@mongo:27017/reporting_db
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       mongo:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:8085/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
@@ -151,6 +186,7 @@ services:
 volumes:
   pgdata:
   mongodata:
+  rabbitdata:
 
 networks:
   urgentia-net:
