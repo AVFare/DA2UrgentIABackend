@@ -4,6 +4,11 @@ Servicio de lectura de UrgentIA. Recibe los seis eventos de `ticket-service`,
 mantiene una vista en MongoDB y expone resumen, SLA y tickets. No calcula
 prioridades ni consulta bases de otros servicios.
 
+Con `RABBITMQ_URL` consume la cola `reportes.eventos`, vinculada a
+`urgentia.eventos`. La infraestructura de P1 crea la topología; P6 solo consume.
+El POST interno sigue disponible para compatibilidad y para la demo aislada.
+Ver [configuración, confirmaciones y pruebas de RabbitMQ](docs/consumidor-rabbitmq.md).
+
 ## Ejecutar P6 sin los otros servicios
 
 Requisitos: Node **20.x** y npm. Desde esta carpeta:
@@ -59,6 +64,11 @@ Con variables ya exportadas podés usar `npm start` o `npm run start:dev`.
 `MONGO_URI` es obligatoria; la base acordada es `reporting_db`. `LOG_LEVEL`
 acepta `DEBUG`, `INFO`, `WARN` o `ERROR` y por defecto usa `INFO`.
 
+`RABBITMQ_URL` activa el consumidor. El Compose raíz ya la inyecta y espera a
+que se cargue la topología; no requiere cambios. Desde el IDE, usar las mismas
+credenciales del `.env` raíz con host `localhost:5672`. Si no está definida,
+el servicio avisa en el log y mantiene el modo HTTP usado por la demo.
+
 El Compose raíz incluye P6 con su usuario `reporting_user`, base `reporting_db`,
 dependencia de MongoDB saludable y red `urgentia-net`. La URL interna es
 `http://reporting-service:8085`. El gateway publica las consultas y agrega su
@@ -99,13 +109,16 @@ según el esquema compartido, sin exigir UUID. Los errores siguen el formato com
    con índice único por `ticketId`. La comparación de `occurredAt` con
    `ultimoEventoEn` ocurre dentro de MongoDB, junto con la actualización.
 4. Marca `PROCESADO` después de la proyección. Los duplicados ya completados
-   no producen efectos. Si falla, devuelve 500 y conserva el evento pendiente
-   para que el productor pueda reintentar.
+   no producen efectos. En AMQP confirma la entrega recién después de guardar
+   ambos pasos. Un fallo de persistencia conserva el evento pendiente y solicita
+   reentrega; los mensajes inválidos van a la DLQ. Por HTTP el fallo devuelve 500.
 
 Funciona con MongoDB standalone; no exige transacciones ni replica set. Si se
 interrumpe entre proyección y confirmación, volver a aplicar el evento es seguro.
-La recuperación depende del reintento HTTP del productor; no hay un worker de
-recuperación automática en esta entrega.
+RabbitMQ administra las reentregas y el límite de fallos de la cola quorum.
+El consumidor se reconecta automáticamente después de un corte. Los eventos
+que agotan ese límite quedan en `reportes.eventos.dlq` para inspección y replay
+controlado; no se reenvían automáticamente desde esa cola.
 
 Un evento anterior no sobrescribe la vista. Un evento distinto con la misma
 fecha se admite: el sobre no incluye una secuencia que permita ordenar empates.
@@ -144,6 +157,8 @@ npm run build
 npm run typecheck
 npm test
 npm run test:e2e
+# Con RABBITMQ_URL exportada y un broker de desarrollo disponible:
+npm run test:rabbitmq
 npm run format:check
 npm run verificar:demo
 ```
@@ -154,6 +169,14 @@ paginación, health y el contrato Swagger. Requieren red en la primera ejecució
 para descargar MongoDB. `npm run verificar:demo` levanta el JavaScript compilado,
 prueba la API, guarda respuestas reales en `docs/evidencias.json` y apaga ambos
 procesos. El puerto 8085 debe estar libre.
+
+`test:rabbitmq` prueba el consumidor con un broker real: crea un vhost temporal,
+carga allí el contrato de topología y lo elimina al terminar. Requiere permisos
+de administración y no consume las colas del vhost del equipo. Comprueba los seis
+tipos de evento, duplicados concurrentes, orden temporal, errores de validación,
+recuperación tras fallar la confirmación en MongoDB, límite de reentregas y
+reconexión. El CI existente conserva sus pruebas HTTP; P1 puede sumar este nuevo
+comando al job con RabbitMQ siguiendo la documentación del consumidor.
 
 El CI ejecuta las pruebas unitarias, las del verificador y las de integración
 HTTP de P6. El job Compose agrega una comprobación del flujo completo por el
@@ -174,6 +197,7 @@ limpia: la consulta inspecciona los primeros 100 tickets P1 escalados.
 ## Documentación y defensa
 
 - [Contrato OpenAPI](../contracts/reporting-service.yaml).
+- [Consumidor RabbitMQ de P6 y validación](docs/consumidor-rabbitmq.md).
 - [Diagrama de componentes](../docs/diagrams/componentes-reporting.puml).
 - [Cobertura de las tarjetas de Trello y pendientes](docs/estado-trello.md).
 - [Borrador del informe de P6](docs/informe-p6.md).

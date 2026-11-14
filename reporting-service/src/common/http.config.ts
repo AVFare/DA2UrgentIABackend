@@ -1,30 +1,10 @@
-import {
-  BadRequestException,
-  INestApplication,
-  ValidationPipe,
-} from '@nestjs/common';
-import { ValidationError } from 'class-validator';
+import { INestApplication } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Request, Response, NextFunction } from 'express';
 import { correlacion } from './correlacion';
 import { HttpExceptionFilter } from './http-exception.filter';
 import { JsonLogger } from './json.logger';
-
-function detalles(
-  errors: ValidationError[],
-  prefijo = '',
-): { campo: string; mensaje: string }[] {
-  return errors.flatMap((error) => {
-    const campo = prefijo ? `${prefijo}.${error.property}` : error.property;
-    return [
-      ...Object.values(error.constraints ?? {}).map((mensaje) => ({
-        campo,
-        mensaje,
-      })),
-      ...detalles(error.children ?? [], campo),
-    ];
-  });
-}
+import { crearValidationPipe } from './validacion';
 
 export function configurarHttp(app: INestApplication) {
   const logger = new JsonLogger();
@@ -41,18 +21,6 @@ export function configurarHttp(app: INestApplication) {
       next();
     });
   });
-  app.useGlobalPipes(
-    new ValidationPipe({
-      transform: true,
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      exceptionFactory: (errors) =>
-        new BadRequestException({
-          codigo: 'VALIDACION',
-          mensaje: 'Body o parametros invalidos',
-          detalles: detalles(errors),
-        }),
-    }),
-  );
+  app.useGlobalPipes(crearValidationPipe());
   app.useGlobalFilters(new HttpExceptionFilter());
 }
