@@ -7,7 +7,10 @@ spring:
     username: sa
     password: ""
 
+# Los tests de la API usan el modo sync (la IA es un servidor de mentira). El modo async
+# se prueba en ClasificacionPorColaTest y en ClasificacionPorColaEnRabbitMqTest.
 clasificacion:
+  modo: sync
   timeout-ms: 1000
 
 # Sin broker en los tests comunes: los mensajes quedan en la tabla outbox y los tests los leen de ahi.

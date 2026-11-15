@@ -11,6 +11,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.urgentia.ticket.application.Dobles.ClasificadorFalso;
 import com.urgentia.ticket.application.Dobles.PublicadorQueGraba;
 import com.urgentia.ticket.application.Dobles.RepositorioEnMemoria;
+import com.urgentia.ticket.application.Dobles.SolicitudesQueGraban;
 import com.urgentia.ticket.application.exception.ClasificacionNoDisponibleException;
 import com.urgentia.ticket.application.exception.DatosInvalidosException;
 import com.urgentia.ticket.application.exception.TicketNoEncontradoException;
@@ -48,8 +49,13 @@ class CasosDeUsoTest {
     private final ClasificadorFalso clasificador = new ClasificadorFalso();
     private final MatrizItilStrategy matriz = new MatrizItilStrategy();
 
+    private final SolicitudesQueGraban solicitudes = new SolicitudesQueGraban(repositorio);
+
     private final CrearTicketService crear = new CrearTicketService(new TicketFactory(reloj), clasificador, matriz,
-            repositorio, publicador, reloj);
+            repositorio, publicador, solicitudes, ModoClasificacion.SINCRONICO, reloj);
+    private final CrearTicketService crearPorLaCola = new CrearTicketService(new TicketFactory(reloj), clasificador,
+            matriz, repositorio, publicador, solicitudes, ModoClasificacion.ASINCRONICO, reloj);
+
     private final ReclasificarTicketService reclasificar =
             new ReclasificarTicketService(clasificador, matriz, repositorio, publicador, reloj);
     private final AsignarTicketService asignar = new AsignarTicketService(repositorio, publicador, reloj);
@@ -105,6 +111,57 @@ class CasosDeUsoTest {
 
             assertThatThrownBy(() -> crear.crear(DEMO)).hasMessage("base caida");
             assertThat(publicador.publicados).isEmpty();
+        }
+
+        @Test
+        void enModoSyncNoPideNadaPorLaCola() {
+            clasificador.responde(laDeLaDemo().build());
+
+            crear.crear(DEMO);
+
+            assertThat(solicitudes.pedidas).isEmpty();
+            assertThat(clasificador.llamadas).isEqualTo(1);
+        }
+    }
+
+    @Nested
+    class CrearPorLaCola {
+
+        @Test
+        void quedaPendienteYPideLaClasificacionSinLlamarALaIa() {
+            Ticket ticket = crearPorLaCola.crear(DEMO);
+
+            assertThat(ticket.estado()).isEqualTo(EstadoTicket.PENDIENTE_CLASIFICACION);
+            assertThat(ticket.prioridad()).isNull();
+            assertThat(ticket.fechaLimiteSla()).isNull();
+            assertThat(clasificador.llamadas).isZero();
+            assertThat(solicitudes.pedidas).containsExactly(ticket.id());
+            assertThat(solicitudes.descripciones).containsExactly(DEMO.descripcion());
+            assertThat(publicador.tipos()).containsExactly("TicketCreado");
+            // El pedido sale despues de guardar el ticket (y en la misma transaccion, ver el decorator).
+            assertThat(solicitudes.guardadosAlPedir).containsExactly(1);
+        }
+
+        @Test
+        void siFallaElGuardadoNoSePideNada() {
+            repositorio.fallarAlGuardar = new IllegalStateException("base caida");
+
+            assertThatThrownBy(() -> crearPorLaCola.crear(DEMO)).hasMessage("base caida");
+            assertThat(solicitudes.pedidas).isEmpty();
+            assertThat(publicador.publicados).isEmpty();
+        }
+    }
+
+    @Nested
+    class Modo {
+
+        @Test
+        void seLeeDeLaVariableDeEntorno() {
+            assertThat(ModoClasificacion.desde("async")).isEqualTo(ModoClasificacion.ASINCRONICO);
+            assertThat(ModoClasificacion.desde(" SYNC ")).isEqualTo(ModoClasificacion.SINCRONICO);
+            assertThatThrownBy(() -> ModoClasificacion.desde("cola"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("sync o async");
         }
     }
 

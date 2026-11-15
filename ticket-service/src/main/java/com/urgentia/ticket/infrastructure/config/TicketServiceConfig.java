@@ -2,17 +2,20 @@ package com.urgentia.ticket.infrastructure.config;
 
 import com.urgentia.ticket.application.port.out.ClasificadorPort;
 import com.urgentia.ticket.application.port.out.EventPublisherPort;
+import com.urgentia.ticket.application.port.out.SolicitudDeClasificacionPort;
 import com.urgentia.ticket.application.port.out.TicketRepository;
 import com.urgentia.ticket.application.service.AsignarTicketService;
 import com.urgentia.ticket.application.service.CambiarEstadoService;
 import com.urgentia.ticket.application.service.ConsultarTicketsService;
 import com.urgentia.ticket.application.service.CrearTicketService;
+import com.urgentia.ticket.application.service.ModoClasificacion;
 import com.urgentia.ticket.application.service.ReclasificarTicketService;
 import com.urgentia.ticket.domain.factory.TicketFactory;
 import com.urgentia.ticket.domain.service.MatrizItilStrategy;
 import com.urgentia.ticket.domain.service.PrioridadStrategy;
 import java.time.Clock;
 import java.time.ZoneOffset;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -44,13 +47,16 @@ public class TicketServiceConfig {
     @Bean
     public CasosDeUsoTransaccionales casosDeUso(TicketFactory factory, ClasificadorPort clasificador,
                                                 PrioridadStrategy estrategia, TicketRepository repositorio,
-                                                EventPublisherPort publicador, Clock reloj,
+                                                EventPublisherPort publicador,
+                                                SolicitudDeClasificacionPort solicitudes,
+                                                @Value("${clasificacion.modo:async}") String modo, Clock reloj,
                                                 PlatformTransactionManager transacciones) {
         TransactionTemplate escritura = new TransactionTemplate(transacciones);
         TransactionTemplate lectura = new TransactionTemplate(transacciones);
         lectura.setReadOnly(true);
         return new CasosDeUsoTransaccionales(
-                new CrearTicketService(factory, clasificador, estrategia, repositorio, publicador, reloj),
+                new CrearTicketService(factory, clasificador, estrategia, repositorio, publicador, solicitudes,
+                        ModoClasificacion.desde(modo), reloj),
                 new AsignarTicketService(repositorio, publicador, reloj),
                 new CambiarEstadoService(repositorio, publicador, reloj),
                 new ReclasificarTicketService(clasificador, estrategia, repositorio, publicador, reloj),

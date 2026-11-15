@@ -59,8 +59,11 @@ logging:
 servicio:
   version: 0.1.0
 
-# Llamada a la IA (seccion 9.2).
+# Clasificacion (secciones 9.2 y 10.5). CLASIFICACION_MODO=async pide la clasificacion por la cola
+# (el POST responde en PENDIENTE_CLASIFICACION); sync es el plan B: llama a la IA por REST dentro del POST.
+# La reclasificacion manual va siempre por REST (url y timeout-ms).
 clasificacion:
+  modo: ${CLASIFICACION_MODO:async}
   url: ${CLASSIFICATION_URL:http://localhost:8082}
   timeout-ms: ${CLASSIFICATION_TIMEOUT_MS:7000}
 
