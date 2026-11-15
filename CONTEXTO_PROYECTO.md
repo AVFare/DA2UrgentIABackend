@@ -164,13 +164,15 @@ infrastructure/
 app/
   main.py, config.py (variables de entorno)
   domain/         enums.py, models.py (Clasificacion y sus invariantes)
-  application/    ports/ (llm_provider.py, clasificacion_repository.py), clasificacion_facade.py, masking.py
+  application/    ports/ (llm_provider.py, clasificacion_repository.py, publicador_clasificaciones.py),
+                  clasificacion_facade.py, procesador_de_solicitudes.py, masking.py
   infrastructure/
     api/          routes/ (clasificaciones.py, health.py), schemas/ (DTOs Pydantic por tema:
                   clasificacion.py, error.py, health.py, base.py), errors.py, correlation.py, openapi.py
     llm/          mock_provider.py, openai_compatible_provider.py,
                   factory.py (LlmProviderFactory), response_parser.py (ACL)
     persistence/  clasificacion_repository.py (MongoDB)
+    messaging/    conexion.py, consumidor.py, manejador.py, publicador.py, mensajes.py, topologia.py (RabbitMQ)
     logs.py       logs JSON con correlationId
 prompts/          clasificacion_full.txt, clasificacion_lite.txt
 scripts/          exportar_openapi.py (genera contracts/classification-service.yaml)
@@ -570,7 +572,18 @@ Si está `PENDIENTE_CLASIFICACION`: `clasificacion`, `prioridad`, `fechaLimiteSl
 7. Guardar en Mongo (colección `clasificaciones`) con la respuesta cruda **ya enmascarada**, versión de prompt, modelo y latencia.
 8. Responder.
 
-**Documento Mongo `clasificaciones`:** los campos de la respuesta + `respuestaCruda` (string) + `textoEnmascarado` (string).
+**Documento Mongo `clasificaciones`:** los campos de la respuesta + `respuestaCruda` (string) + `textoEnmascarado` (string) + `solicitudId` (string, solo si se pidió por la cola; índice único).
+
+**Clasificación por cola (RabbitMQ).** El contrato está en `contracts/messaging/` y `contracts/events/clasificacion-events.schema.json`.
+1. El servicio consume `ClasificacionSolicitada` de la cola `clasificacion.solicitudes`, hasta `COLA_PREFETCH` (10) a la vez. Al arrancar declara su parte de la topología con los mismos argumentos que `rabbitmq-definitions.json`.
+2. Valida el mensaje contra el contrato; si no cumple, lo rechaza sin reintento y va a `clasificacion.solicitudes.dlq`.
+3. `ProcesadorDeSolicitudes` busca si esa solicitud (`eventId`) ya tiene clasificación guardada. Si no, clasifica con `ClasificacionFacade` (el mismo flujo de arriba) y guarda el registro con `solicitudId`.
+4. Publica `ClasificacionGenerada` (routing key `ClasificacionGenerada`) con confirmación del broker, `mandatory` y las propiedades AMQP del contrato. El payload lleva `ticketId`, `resultado` (`CLASIFICADO` o `ERROR`) y `clasificacion` o `error`. El `eventId` sale del de la solicitud, así una solicitud repetida da la misma respuesta.
+5. Confirma la solicitud (`ack`) recién después de guardar y publicar.
+6. Si el LLM falla, publica `ClasificacionGenerada` con resultado `ERROR` (mismos códigos que el REST) y confirma la solicitud.
+7. Si falla la base o la publicación, devuelve la solicitud a la cola con `basic.reject` y `requeue=true` (en RabbitMQ 4 un `nack` con reencolado no cuenta para el límite y se reintentaría sin fin). Tras 5 reintentos (`x-delivery-limit: 5`), RabbitMQ la manda a la cola de mensajes muertos.
+
+Sin `RABBITMQ_URL` el servicio no consume la cola y atiende solo por REST. Si RabbitMQ no está disponible, el REST sigue funcionando y la conexión se reintenta cada 5 s.
 
 ### 9.4 notification-service (8084)
 
@@ -746,7 +759,7 @@ Contrato: [`contracts/messaging/`](contracts/messaging/) (AsyncAPI 3.0, `rabbitm
 
 - Colas **quorum** y durables, mensajes persistentes. Cada cola tiene su `<cola>.dlq` en `urgentia.dlx`.
 - **Quien publica:** routing key = `eventType`; propiedades `message_id` = `eventId`, `correlation_id` = `correlationId`, `type` = `eventType`, `delivery_mode` = 2; publisher confirms.
-- **Quien consume:** ack manual después de procesar; idempotencia por `eventId`; mensaje inválido → `nack` sin reencolar (dead-letter); falla transitoria → `nack` con reencolado (RabbitMQ lo manda a la dead-letter después de 5 reintentos, `x-delivery-limit`); logs con el `correlationId` del sobre.
+- **Quien consume:** ack manual después de procesar; idempotencia por `eventId`; mensaje inválido → `basic.reject` sin reencolar (dead-letter); falla transitoria → `basic.reject` con reencolado (RabbitMQ lo manda a la dead-letter después de 5 reintentos, `x-delivery-limit`; no se usa `nack` porque desde RabbitMQ 4.3 no suma al contador); logs con el `correlationId` del sobre.
 - La topología la carga el contenedor `rabbitmq-topologia` al arrancar el Compose (sección 3).
 
 ### 10.5 Mensajes de clasificación (Entrega 2)
@@ -957,6 +970,8 @@ Descripción: {descripcion}
 | **Groq `qwen/qwen3.8-27b`** | **full** | **100%** | **100%** | **95%** | **0,6 s** | **sí** |
 
 Los errores de escalamiento de los modelos chicos son todos de más (escalan casos de un área); ningún modelo dejó sin escalar un caso crítico.
+
+La evaluación del 14/11/2026 con Groq `qwen/qwen3.8-27b` y el prompt `full` repitió esos valores (mediana 0,6 s, máxima 1,0 s). Los requisitos de IA con su resultado y las decisiones de diseño están en `docs/ia/requisitos-y-decisiones.md`.
 **Caso de privacidad (test de `masking.py`):** "Soy Juan, mi mail es juan.perez@empresa.com y mi celular 11-5555-1234, DNI 30.123.456" → no debe quedar ningún dato original en el texto enviado ni en Mongo.
 
 ---
@@ -966,7 +981,7 @@ Los errores de escalamiento de los modelos chicos son todos de más (escalan cas
 | Servicio | Patrones | Dónde |
 |---|---|---|
 | ticket-service | Factory, Repository, Strategy, Observer, Adapter/ACL, Aggregate, Value Object, Domain Event, Builder (tests) | `TicketFactory`, `TicketRepository`, `PrioridadStrategy`/`MatrizItilStrategy`, listeners de eventos, `ClassificationHttpClient` |
-| classification-service | Facade, Strategy, Factory Method, Adapter/ACL, Repository | `ClasificacionFacade`, `LlmProvider`, `LlmProviderFactory`, `response_parser`, `clasificacion_repository` |
+| classification-service | Facade, Strategy, Factory Method, Adapter/ACL, Repository, consumidor idempotente | `ClasificacionFacade`, `LlmProvider`, `LlmProviderFactory`, `response_parser`, `clasificacion_repository`, `ProcesadorDeSolicitudes` |
 | user-service | Repository | `UsuarioRepository` |
 | api-gateway | Chain of Responsibility, Proxy | Cadena de filtros, el gateway mismo |
 | notification-service | Observer (consumidor), Strategy, Factory, Repository | Consumidor de la cola y reglas por evento, `CanalNotificacion` y `EMAIL_PROVIDER`, plantillas, repositorio Mongo |
@@ -1032,7 +1047,7 @@ CORS_ALLOWED_ORIGINS=http://localhost:5173
 | api-gateway | `JWT_SECRET`, `USER_SERVICE_URL=http://user-service:8083`, `TICKET_SERVICE_URL=http://ticket-service:8081`, `CLASSIFICATION_SERVICE_URL=http://classification-service:8082`, `NOTIFICATION_SERVICE_URL=http://notification-service:8084`, `REPORTING_SERVICE_URL=http://reporting-service:8085`, `CORS_ALLOWED_ORIGINS=http://localhost:5173` |
 | user-service | `DB_URL=jdbc:postgresql://postgres:5432/users_db`, `DB_USER=users_user`, `DB_PASSWORD`, `JWT_SECRET`, `JWT_EXPIRATION_MINUTES` |
 | ticket-service | `DB_URL=jdbc:postgresql://postgres:5432/tickets_db`, `DB_USER=tickets_user`, `DB_PASSWORD`, `CLASSIFICATION_URL=http://classification-service:8082`, `CLASSIFICATION_TIMEOUT_MS`, `EVENT_SUBSCRIBERS=http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos`, `RABBITMQ_URL` |
-| classification-service | `MONGO_URI=mongodb://classification_user:<pass>@mongo:27017/classification_db`, `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LLM_TIMEOUT_MS`, `PROMPT_VERSION`, `RABBITMQ_URL` |
+| classification-service | `MONGO_URI=mongodb://classification_user:<pass>@mongo:27017/classification_db`, `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LLM_TIMEOUT_MS`, `PROMPT_VERSION`, `RABBITMQ_URL`, `COLA_PREFETCH` |
 | notification-service | `MONGO_URI=mongodb://notifications_user:<pass>@mongo:27017/notifications_db`, `RABBITMQ_URL`, `EMAIL_PROVIDER=simulado\|real`, `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_DESTINO_DEMO` |
 | reporting-service | `MONGO_URI=mongodb://reporting_user:<pass>@mongo:27017/reporting_db`, `RABBITMQ_URL` |
 

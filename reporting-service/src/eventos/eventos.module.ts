@@ -8,6 +8,8 @@ import {
 import { EventoProcesadoRepository } from './evento-procesado.repository';
 import { EventosController } from './eventos.controller';
 import { EventosService } from './eventos.service';
+import { ConsumidorEventosService } from './consumidor-eventos.service';
+import { proveedoresRabbitmq } from './rabbitmq.config';
 
 @Module({
   imports: [
@@ -17,6 +19,11 @@ import { EventosService } from './eventos.service';
     ]),
   ],
   controllers: [EventosController],
-  providers: [EventosService, EventoProcesadoRepository],
+  providers: [
+    EventosService,
+    EventoProcesadoRepository,
+    ConsumidorEventosService,
+    ...proveedoresRabbitmq,
+  ],
 })
 export class EventosModule {}
