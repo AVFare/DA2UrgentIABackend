@@ -148,6 +148,9 @@ LLM_PROVIDER=groq LLM_API_KEY=... python -m scripts.evaluar
 LLM_PROVIDER=ollama LLM_BASE_URL=http://localhost:11434/v1 PROMPT_VERSION=lite python -m scripts.evaluar
 ```
 
+Los requisitos de IA y las decisiones de diseño están en
+[`docs/ia/requisitos-y-decisiones.md`](../docs/ia/requisitos-y-decisiones.md).
+
 Criterio de aceptación: ≥ 80% de acierto en `categoria` y ≥ 90% en `requiereEscalamiento`.
 Con Groq `qwen/qwen3.8-27b` y el prompt `full` da 100% y 100%. El mismo criterio corre como test
 con `EVALUAR_RIA01=1 pytest tests/test_evaluacion.py`. Si el proveedor responde 429 (límite de
