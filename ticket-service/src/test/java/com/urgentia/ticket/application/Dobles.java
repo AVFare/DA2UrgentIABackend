@@ -4,6 +4,7 @@ import com.urgentia.ticket.application.exception.ClasificacionNoDisponibleExcept
 import com.urgentia.ticket.application.port.out.ClasificadorPort;
 import com.urgentia.ticket.application.port.out.EventPublisherPort;
 import com.urgentia.ticket.application.port.out.FiltroTickets;
+import com.urgentia.ticket.application.port.out.MensajesProcesadosPort;
 import com.urgentia.ticket.application.port.out.Pagina;
 import com.urgentia.ticket.application.port.out.SolicitudDeClasificacionPort;
 import com.urgentia.ticket.application.port.out.TicketRepository;
@@ -139,6 +140,24 @@ public final class Dobles {
             pedidas.add(ticketId);
             descripciones.add(descripcion);
             guardadosAlPedir.add(repositorio.guardados);
+        }
+    }
+
+    /** Mensajes procesados en memoria (idempotencia del consumidor). */
+    public static class MensajesProcesadosEnMemoria implements MensajesProcesadosPort {
+
+        public final Map<UUID, String> procesados = new LinkedHashMap<>();
+
+        @Override
+        public boolean yaProcesado(UUID mensajeId) {
+            return procesados.containsKey(mensajeId);
+        }
+
+        @Override
+        public void registrar(UUID mensajeId, String tipo) {
+            if (procesados.putIfAbsent(mensajeId, tipo) != null) {
+                throw new IllegalStateException("El mensaje " + mensajeId + " ya estaba registrado");
+            }
         }
     }
 }

@@ -46,6 +46,14 @@ spring:
     publisher-returns: true
     template:
       mandatory: true
+    # Consumidor de tickets.clasificaciones: ack manual despues de procesar (contracts/messaging/README.md).
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 10
+        default-requeue-rejected: false
+        # Si la cola todavia no existe (por ejemplo, desde el IDE sin la topologia), sigue reintentando.
+        missing-queues-fatal: false
 
 # Una linea JSON por evento: timestamp, level, service, correlationId, message.
 logging:

@@ -16,19 +16,21 @@ import java.time.temporal.ChronoUnit;
  * Anti-Corruption Layer: traduce el JSON de classification-service al Value Object
  * Clasificacion del dominio y rechaza todo lo que no cumpla el contrato
  * (enums fuera de la lista, confianza fuera de [0, 1], datos faltantes, otro ticketId).
+ * La usan la respuesta REST (ClassificationHttpClient) y el mensaje ClasificacionGenerada de la cola
+ * (ManejadorDeClasificaciones), que traen los mismos campos.
  */
-class ClasificacionTraductor {
+public class ClasificacionTraductor {
 
     static final int JUSTIFICACION_MAX = 300;
     static final int PROVEEDOR_MAX = 100;
 
     private final Clock reloj;
 
-    ClasificacionTraductor(Clock reloj) {
+    public ClasificacionTraductor(Clock reloj) {
         this.reloj = reloj;
     }
 
-    Clasificacion traducir(ClasificacionRespuesta r, TicketId ticketId) {
+    public Clasificacion traducir(ClasificacionRespuesta r, TicketId ticketId) {
         if (r == null) {
             throw new RespuestaInvalidaException("la respuesta vino vacia");
         }

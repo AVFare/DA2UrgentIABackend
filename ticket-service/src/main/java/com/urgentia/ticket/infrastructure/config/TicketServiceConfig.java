@@ -2,8 +2,10 @@ package com.urgentia.ticket.infrastructure.config;
 
 import com.urgentia.ticket.application.port.out.ClasificadorPort;
 import com.urgentia.ticket.application.port.out.EventPublisherPort;
+import com.urgentia.ticket.application.port.out.MensajesProcesadosPort;
 import com.urgentia.ticket.application.port.out.SolicitudDeClasificacionPort;
 import com.urgentia.ticket.application.port.out.TicketRepository;
+import com.urgentia.ticket.application.service.AplicarClasificacionService;
 import com.urgentia.ticket.application.service.AsignarTicketService;
 import com.urgentia.ticket.application.service.CambiarEstadoService;
 import com.urgentia.ticket.application.service.ConsultarTicketsService;
@@ -49,6 +51,7 @@ public class TicketServiceConfig {
                                                 PrioridadStrategy estrategia, TicketRepository repositorio,
                                                 EventPublisherPort publicador,
                                                 SolicitudDeClasificacionPort solicitudes,
+                                                MensajesProcesadosPort mensajesProcesados,
                                                 @Value("${clasificacion.modo:async}") String modo, Clock reloj,
                                                 PlatformTransactionManager transacciones) {
         TransactionTemplate escritura = new TransactionTemplate(transacciones);
@@ -61,6 +64,7 @@ public class TicketServiceConfig {
                 new CambiarEstadoService(repositorio, publicador, reloj),
                 new ReclasificarTicketService(clasificador, estrategia, repositorio, publicador, reloj),
                 new ConsultarTicketsService(repositorio),
+                new AplicarClasificacionService(repositorio, mensajesProcesados, estrategia, publicador, reloj),
                 escritura,
                 lectura);
     }
