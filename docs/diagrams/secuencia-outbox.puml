@@ -1,0 +1,63 @@
+@startuml secuencia-outbox
+title UrgentIA - ticket-service: Transactional Outbox y clasificacion por cola (ADR-12)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+autonumber
+
+actor "Solicitante" as S
+participant "api-gateway" as GW
+participant "ticket-service\n(CrearTicketService)" as T
+database "tickets_db\n(tickets + outbox)" as DB
+participant "PublicadorDelOutbox" as P
+queue "RabbitMQ" as MQ
+participant "classification-service\n(worker)" as C
+participant "ticket-service\n(ConsumidorDeClasificaciones)" as K
+participant "notification-service\nreporting-service" as N
+
+S -> GW : POST /api/tickets (JWT)
+GW -> T : POST /api/tickets + X-User-Id
+activate T
+T -> DB : una sola transaccion:\nticket PENDIENTE_CLASIFICACION\n+ outbox: TicketCreado\n+ outbox: ClasificacionSolicitada
+T --> GW : 201 PENDIENTE_CLASIFICACION
+deactivate T
+GW --> S : 201 (el front consulta hasta ver la prioridad)
+
+loop cada 500 ms
+  P -> DB : filas pendientes, en orden
+  P -> MQ : publicar (persistente, mandatory)
+  MQ --> P : confirmacion (publisher confirm)
+  P -> DB : marcar publicado_en
+end
+MQ -> N : TicketCreado (reportes.eventos)
+MQ -> C : ClasificacionSolicitada (clasificacion.solicitudes)
+activate C
+C -> C : enmascarar, LLM, validar, guardar
+C -> MQ : ClasificacionGenerada (urgentia.clasificacion)
+deactivate C
+MQ -> K : ClasificacionGenerada (tickets.clasificaciones)
+activate K
+K -> DB : una sola transaccion:\nya procesado? -> confirmar sin efectos\nsi no: Ticket.aplicarClasificacion()\n(matriz -> P1 -> ESCALADO)\n+ outbox: TicketClasificado, TicketEscalado\n+ mensajes_procesados
+K -> MQ : ack
+deactivate K
+P -> MQ : TicketClasificado, TicketEscalado (con confirmacion)
+MQ -> N : TicketEscalado -> aviso a la guardia\ntodos -> reportes
+
+== Broker caido ==
+S -> GW : POST /api/tickets
+GW -> T
+T -> DB : ticket + outbox (no depende del broker)
+T --> S : 201
+P -> MQ : publicar
+MQ --> P : sin conexion / sin confirmacion
+P -> DB : intentos + 1, ultimo_error\n(la fila sigue pendiente)
+note over P : reintenta a 1, 2 y 4 s\ny despues cada 8 s
+P -> MQ : cuando vuelve: publica en orden\nlo que estaba pendiente
+note over MQ, N : nada se pierde: lo que estaba en el outbox sale al volver
+
+== La IA no pudo clasificar ==
+C -> MQ : ClasificacionGenerada con resultado ERROR
+MQ -> K
+K -> DB : el ticket sigue PENDIENTE_CLASIFICACION
+note over K : se puede reclasificar por REST\n(POST /api/tickets/{id}/reclasificacion)
+@enduml

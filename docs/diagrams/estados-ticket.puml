@@ -6,9 +6,9 @@ hide empty description
 
 [*] --> NUEVO : TicketFactory.crear()\n[TicketCreado]
 
-NUEVO --> CLASIFICADO : la IA respondio\n[TicketClasificado]
-NUEVO --> PENDIENTE_CLASIFICACION : la IA fallo o tardo > 7 s
-PENDIENTE_CLASIFICACION --> CLASIFICADO : POST /reclasificacion\n[TicketClasificado]
+NUEVO --> CLASIFICADO : modo sync: la IA respondio\n[TicketClasificado]
+NUEVO --> PENDIENTE_CLASIFICACION : modo async: se pide por la cola\n(ClasificacionSolicitada)\nmodo sync: la IA fallo o tardo > 7 s
+PENDIENTE_CLASIFICACION --> CLASIFICADO : llega ClasificacionGenerada\no POST /reclasificacion\n[TicketClasificado]
 
 CLASIFICADO --> CLASIFICADO : POST /reclasificacion\n(recalcula prioridad y SLA)
 CLASIFICADO --> ESCALADO : automatico si la prioridad final es P1\n(o la IA lo marca critico)\n[TicketEscalado]
@@ -26,7 +26,9 @@ CERRADO --> [*]
 
 note right of PENDIENTE_CLASIFICACION
   Sin prioridad ni SLA (null).
-  El alta responde 201 igual.
+  El alta responde 201 en este estado.
+  Si la IA contesta con error,
+  sigue aca hasta reclasificar.
 end note
 
 note left of CERRADO
