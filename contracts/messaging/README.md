@@ -63,8 +63,8 @@ Todas las colas son **quorum** y durables. Las colas de trabajo tienen `x-delive
 
 1. **Ack manual, después de procesar** (guardar en la base). Nunca auto-ack.
 2. **Idempotencia por `eventId`:** la entrega es "al menos una vez". Un mensaje repetido se confirma (ack) sin efectos. notification-service y reporting-service ya tienen su colección `eventos_procesados`.
-3. **Mensaje inválido** (no cumple el esquema): `nack` **sin** reencolar → va directo a la DLQ. Reintentarlo no lo arregla.
-4. **Falla transitoria** (base caída, timeout): `nack` **con** reencolado. RabbitMQ cuenta las entregas y, cuando se agotan los 5 reintentos (6 entregas en total), lo manda solo a la DLQ. El consumidor no lleva la cuenta.
+3. **Mensaje inválido** (no cumple el esquema): `reject` (`basic.reject`) **sin** reencolar → va directo a la DLQ. Reintentarlo no lo arregla.
+4. **Falla transitoria** (base caída, timeout): `reject` (`basic.reject`) **con** reencolado. RabbitMQ cuenta las entregas y, cuando se agotan los 5 reintentos (6 entregas en total), lo manda solo a la DLQ. El consumidor no lleva la cuenta. Se usa `reject` y no `nack` porque desde RabbitMQ 4.3 un `basic.nack` con reencolado no incrementa el delivery-count de la cola quorum: `x-delivery-limit` nunca se cumpliría y el mensaje se reintentaría sin fin.
 5. **`prefetch` = 10** como punto de partida.
 6. **Logs con el `correlationId`** del sobre en cada línea mientras se procesa el mensaje.
 7. **Orden:** no está garantizado entre eventos de un mismo ticket. reporting-service descarta los eventos más viejos que su proyección.
