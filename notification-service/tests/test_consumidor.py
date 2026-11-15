@@ -1,4 +1,5 @@
 import json
+import socket
 from types import SimpleNamespace
 
 import pytest
@@ -62,16 +63,16 @@ class CanalFalso:
     def basic_ack(self, delivery_tag):
         self.respuestas.append(("ack", delivery_tag))
 
-    def basic_nack(self, delivery_tag, requeue):
-        self.respuestas.append(("nack", delivery_tag, requeue))
+    def basic_reject(self, delivery_tag, requeue):
+        self.respuestas.append(("reject", delivery_tag, requeue))
 
 
 @pytest.mark.parametrize(
     "decision, respuesta",
     [
         (Decision.ACK, ("ack", 7)),
-        (Decision.RECHAZAR, ("nack", 7, False)),
-        (Decision.REINTENTAR, ("nack", 7, True)),
+        (Decision.RECHAZAR, ("reject", 7, False)),
+        (Decision.REINTENTAR, ("reject", 7, True)),
     ],
 )
 def test_cada_decision_se_traduce_en_la_respuesta_al_broker(decision, respuesta):
@@ -100,3 +101,22 @@ def test_los_logs_del_mensaje_llevan_el_correlation_id_del_sobre(mongo, caplog):
     assert canal.respuestas == [("ack", 1)]
     procesado = next(r for r in caplog.records if r.getMessage() == "Mensaje procesado")
     assert procesado.correlationId == evento["correlationId"]
+
+
+def test_si_el_nombre_del_broker_no_resuelve_sigue_reintentando(mongo, monkeypatch):
+    consumidor = ConsumidorEventos(
+        "amqp://x:y@rabbitmq:5672", "notificaciones.eventos", 10, obtener_db=lambda: mongo, espera_reconexion=0
+    )
+    intentos = []
+
+    def conexion_que_falla(parametros):
+        intentos.append(parametros)
+        if len(intentos) == 3:
+            consumidor._detener.set()
+        raise socket.gaierror(-2, "Name or service not known")
+
+    monkeypatch.setattr("app.consumers.eventos_consumer.pika.BlockingConnection", conexion_que_falla)
+
+    consumidor._correr()
+
+    assert len(intentos) == 3

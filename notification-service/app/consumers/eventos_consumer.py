@@ -3,9 +3,11 @@
 Es una entrada mas, como el endpoint POST /api/eventos: valida el sobre con el mismo schema y
 delega en EventoService. Sigue las reglas del contrato:
 - ack recien despues de procesar (la notificacion ya quedo guardada);
-- mensaje invalido: nack sin reencolar, va directo a la dead-letter;
-- falla transitoria (Mongo caido, etc.): nack con reencolado; RabbitMQ lo manda a la dead-letter
+- mensaje invalido: reject sin reencolar, va directo a la dead-letter;
+- falla transitoria (Mongo caido, etc.): reject con reencolado; RabbitMQ lo manda a la dead-letter
   cuando se agotan los reintentos (x-delivery-limit), asi que aca no se cuentan.
+Se usa basic.reject y no basic.nack porque desde RabbitMQ 4.3 el nack con reencolado no suma al
+delivery-count de la cola quorum: el mensaje se reintentaria para siempre y nunca llegaria a la DLQ.
 """
 
 import logging
@@ -31,8 +33,8 @@ logger = logging.getLogger("consumidor")
 
 class Decision(StrEnum):
     ACK = "ACK"
-    RECHAZAR = "RECHAZAR"  # nack sin reencolar: dead-letter
-    REINTENTAR = "REINTENTAR"  # nack con reencolado
+    RECHAZAR = "RECHAZAR"  # reject sin reencolar: dead-letter
+    REINTENTAR = "REINTENTAR"  # reject con reencolado
 
 
 def procesar_mensaje(cuerpo: bytes, db: Database) -> Decision:
@@ -103,7 +105,9 @@ class ConsumidorEventos:
                 self._canal.basic_consume(queue=self._cola, on_message_callback=self._al_recibir)
                 logger.info("Escuchando la cola", extra={"cola": self._cola})
                 self._canal.start_consuming()
-            except AMQPError as error:
+            # OSError cubre lo que pika no envuelve, como socket.gaierror cuando el nombre del
+            # broker no resuelve (contenedor frenado): sin esto el hilo muere y la cola queda sola.
+            except (AMQPError, OSError) as error:
                 if not self._detener.is_set():
                     logger.warning(
                         "Sin conexion con RabbitMQ o sin la cola; se reintenta",
@@ -147,4 +151,4 @@ class ConsumidorEventos:
         }
         reencolar = decision is Decision.REINTENTAR
         logger.warning("Mensaje reencolado" if reencolar else "Mensaje enviado a la dead-letter", extra=extra)
-        canal.basic_nack(delivery_tag=entrega.delivery_tag, requeue=reencolar)
+        canal.basic_reject(delivery_tag=entrega.delivery_tag, requeue=reencolar)
