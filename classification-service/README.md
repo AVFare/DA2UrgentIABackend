@@ -32,7 +32,8 @@ tiempo → 504 `LLM_TIMEOUT`.
 Además de la API, el servicio clasifica lo que le llega por RabbitMQ. El contrato está en
 [`contracts/messaging/`](../contracts/messaging/README.md) (topología y reglas) y en
 [`contracts/events/clasificacion-events.schema.json`](../contracts/events/clasificacion-events.schema.json)
-(los mensajes).
+(los mensajes). El flujo completo, con los casos de falla, está en el diagrama
+[`secuencia-clasificacion-por-cola`](../docs/diagrams/secuencia-clasificacion-por-cola.png).
 
 1. Consume `ClasificacionSolicitada` de la cola `clasificacion.solicitudes`, hasta `COLA_PREFETCH`
    a la vez.
