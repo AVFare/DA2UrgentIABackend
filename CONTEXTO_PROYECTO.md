@@ -2,7 +2,11 @@
 
 > **Fuente única de verdad** del proyecto UrgentIA (TP de Desarrollo de Aplicaciones II, UADE).
 > Todo el equipo (y sus asistentes de IA) trabaja a partir de este archivo.
-> Versión: 1.5 · Fecha: 14/11/2026 · Alcance: Entrega 2 (mensajería, SOAP, API externa y frontend).
+> Versión: 1.6 · Fecha: 15/11/2026 · Alcance: Entrega 2 (mensajería, SOAP, API externa y frontend).
+
+**Cambios de la versión 1.6**
+
+- ticket-service publica por RabbitMQ con **Transactional Outbox** y pide la clasificación por la cola (ADR-12). `POST /api/tickets` responde en `PENDIENTE_CLASIFICACION` con `CLASIFICACION_MODO=async` (por defecto); `sync` queda como plan B. Se quita `EVENT_SUBSCRIBERS` (secciones 4.1, 8.4, 9.2, 10.3, 14 y 17).
 
 **Cambios de la versión 1.5**
 
@@ -144,14 +148,16 @@ domain/
   exception/    TransicionInvalidaException, ReglaDeNegocioException
 application/
   port/in/      CrearTicketUseCase, AsignarTicketUseCase, CambiarEstadoUseCase,
-                ReclasificarTicketUseCase, ConsultarTicketsUseCase
-  port/out/     TicketRepository, ClasificadorPort, EventPublisherPort
+                ReclasificarTicketUseCase, ConsultarTicketsUseCase, AplicarClasificacionUseCase
+  port/out/     TicketRepository, ClasificadorPort, EventPublisherPort,
+                SolicitudDeClasificacionPort, MensajesProcesadosPort
   service/      implementaciones de los casos de uso (orquestan, sin reglas)
 infrastructure/
   rest/         TicketController, dto/, mapper/, GlobalExceptionHandler, HealthController
-  persistence/  TicketJpaEntity, SpringDataTicketRepository, JpaTicketRepositoryAdapter
+  persistence/  TicketJpaEntity, SpringDataTicketRepository, JpaTicketRepositoryAdapter, JpaMensajesProcesadosAdapter
   client/       ClassificationHttpClient (ACL, implementa ClasificadorPort)
-  messaging/    SpringEventPublisherAdapter, listeners que reenvían eventos por HTTP
+  messaging/    OutboxEventPublisherAdapter, OutboxSolicitudDeClasificacionAdapter, ConsumidorDeClasificaciones
+    outbox/     Outbox, PublicadorDelOutbox (publisher confirms), EnviadorRabbit
   config/
 ```
 
@@ -399,9 +405,9 @@ Al aplicar una clasificación:
 
 | Desde | Hacia | Cómo |
 |---|---|---|
-| `NUEVO` | `CLASIFICADO` | Clasificación exitosa al crear |
-| `NUEVO` | `PENDIENTE_CLASIFICACION` | La IA falló o superó el timeout |
-| `PENDIENTE_CLASIFICACION` | `CLASIFICADO` | `POST /reclasificacion` exitoso |
+| `NUEVO` | `CLASIFICADO` | Clasificación exitosa al crear (modo `sync`) |
+| `NUEVO` | `PENDIENTE_CLASIFICACION` | Al crear con `CLASIFICACION_MODO=async` (se pide la clasificación por la cola), o en `sync` si la IA falló o superó el timeout |
+| `PENDIENTE_CLASIFICACION` | `CLASIFICADO` | Llega `ClasificacionGenerada` (10.5) o `POST /reclasificacion` exitoso |
 | `CLASIFICADO` | `ASIGNADO` | `PATCH /asignacion` |
 | `CLASIFICADO` | `ESCALADO` | Automático (8.3) |
 | `ASIGNADO` | `EN_CURSO` | `PATCH /estado` |
@@ -477,7 +483,9 @@ Todas las rutas de abajo son las **del servicio**; desde afuera se llaman igual 
 ```json
 // request
 { "titulo": "No puede ingresar nadie", "descripcion": "Producción caída, todos los usuarios bloqueados en el login desde las 9" }
-// 201 → Ticket (el flujo completo ocurre en esta llamada)
+// 201 → Ticket. Con CLASIFICACION_MODO=async (por defecto), en PENDIENTE_CLASIFICACION: la prioridad,
+//       el SLA y el escalamiento llegan cuando responde la IA por la cola (10.5); el cliente consulta
+//       GET /api/tickets/{id}. Con sync (plan B), el flujo completo ocurre en esta llamada.
 // 400 VALIDACION
 ```
 
@@ -529,7 +537,9 @@ Todas las rutas de abajo son las **del servicio**; desde afuera se llaman igual 
 ```
 Si está `PENDIENTE_CLASIFICACION`: `clasificacion`, `prioridad`, `fechaLimiteSla` y `motivoEscalamiento` van en `null`.
 
-**Llamada saliente a classification-service:** `POST http://classification-service:8082/api/clasificaciones`, timeout **7 s** (`CLASSIFICATION_TIMEOUT_MS=7000`). Cualquier error, timeout o 5xx → el ticket queda en `PENDIENTE_CLASIFICACION` y la creación responde 201 igual.
+**Clasificación:** con `CLASIFICACION_MODO=async` (por defecto) el alta guarda en el outbox un `ClasificacionSolicitada` (10.5) y responde enseguida; ticket-service aplica el `ClasificacionGenerada` cuando llega (ADR-12).
+
+**Llamada saliente a classification-service** (modo `sync` y reclasificación): `POST http://classification-service:8082/api/clasificaciones`, timeout **7 s** (`CLASSIFICATION_TIMEOUT_MS=7000`). Cualquier error, timeout o 5xx → el ticket queda en `PENDIENTE_CLASIFICACION` y la creación responde 201 igual.
 
 ### 9.3 classification-service (8082)
 
@@ -732,7 +742,9 @@ Cada evento hace **upsert** del documento `ticket_view` usando el snapshot del p
 | `TicketEstadoCambiado` | ignora | proyecta |
 | `TicketResuelto` | **notifica** | proyecta (setea `fechaResolucion`) |
 
-### 10.3 Entrega por HTTP (Defensa 1, en transición)
+### 10.3 Entrega por HTTP (Defensa 1, reemplazada)
+
+> Reemplazada por RabbitMQ con Transactional Outbox (10.4 y ADR-12): ticket-service ya no manda eventos por HTTP ni usa `EVENT_SUBSCRIBERS`. Queda como registro de la Defensa 1.
 
 - ticket-service publica **después del commit** (`@TransactionalEventListener(phase = AFTER_COMMIT)`) a cada URL de `EVENT_SUBSCRIBERS`, en paralelo y de forma asíncrona (`@Async`), sin bloquear la respuesta al cliente.
 - Reintentos: 3 con espera 1 s, 2 s y 4 s. Si fallan todos, log `ERROR` con `eventId` (en la Defensa 1 se acepta la pérdida; en la parte 2 se resuelve con Transactional Outbox).
@@ -797,9 +809,9 @@ flowchart TB
 ```mermaid
 stateDiagram-v2
   [*] --> NUEVO
-  NUEVO --> CLASIFICADO: IA ok
-  NUEVO --> PENDIENTE_CLASIFICACION: IA falla
-  PENDIENTE_CLASIFICACION --> CLASIFICADO: reclasificar
+  NUEVO --> CLASIFICADO: IA ok (sync)
+  NUEVO --> PENDIENTE_CLASIFICACION: se pide por la cola (async) / IA falla (sync)
+  PENDIENTE_CLASIFICACION --> CLASIFICADO: ClasificacionGenerada / reclasificar
   CLASIFICADO --> ASIGNADO: asignar
   CLASIFICADO --> ESCALADO: P1 o crítico (auto)
   ASIGNADO --> EN_CURSO: iniciar
@@ -837,6 +849,8 @@ sequenceDiagram
   end
   Note over T,C: Si C falla o tarda más de 7 s → PENDIENTE_CLASIFICACION y 201 igual
 ```
+
+En la Entrega 2 (`CLASIFICACION_MODO=async`) la clasificación y los eventos van por RabbitMQ con Transactional Outbox: secuencia en [`docs/diagrams/secuencia-outbox.png`](docs/diagrams/secuencia-outbox.png) (ADR-12).
 
 ---
 
@@ -1046,7 +1060,7 @@ CORS_ALLOWED_ORIGINS=http://localhost:5173
 |---|---|
 | api-gateway | `JWT_SECRET`, `USER_SERVICE_URL=http://user-service:8083`, `TICKET_SERVICE_URL=http://ticket-service:8081`, `CLASSIFICATION_SERVICE_URL=http://classification-service:8082`, `NOTIFICATION_SERVICE_URL=http://notification-service:8084`, `REPORTING_SERVICE_URL=http://reporting-service:8085`, `CORS_ALLOWED_ORIGINS=http://localhost:5173` |
 | user-service | `DB_URL=jdbc:postgresql://postgres:5432/users_db`, `DB_USER=users_user`, `DB_PASSWORD`, `JWT_SECRET`, `JWT_EXPIRATION_MINUTES` |
-| ticket-service | `DB_URL=jdbc:postgresql://postgres:5432/tickets_db`, `DB_USER=tickets_user`, `DB_PASSWORD`, `CLASSIFICATION_URL=http://classification-service:8082`, `CLASSIFICATION_TIMEOUT_MS`, `EVENT_SUBSCRIBERS=http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos`, `RABBITMQ_URL` |
+| ticket-service | `DB_URL=jdbc:postgresql://postgres:5432/tickets_db`, `DB_USER=tickets_user`, `DB_PASSWORD`, `CLASSIFICATION_URL=http://classification-service:8082`, `CLASSIFICATION_TIMEOUT_MS`, `CLASIFICACION_MODO=async\|sync`, `RABBITMQ_URL` |
 | classification-service | `MONGO_URI=mongodb://classification_user:<pass>@mongo:27017/classification_db`, `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LLM_TIMEOUT_MS`, `PROMPT_VERSION`, `RABBITMQ_URL`, `COLA_PREFETCH` |
 | notification-service | `MONGO_URI=mongodb://notifications_user:<pass>@mongo:27017/notifications_db`, `RABBITMQ_URL`, `EMAIL_PROVIDER=simulado\|real`, `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_DESTINO_DEMO` |
 | reporting-service | `MONGO_URI=mongodb://reporting_user:<pass>@mongo:27017/reporting_db`, `RABBITMQ_URL` |
@@ -1156,7 +1170,7 @@ services:
       DB_USER: tickets_user
       DB_PASSWORD: ${TICKETS_DB_PASSWORD}
       CLASSIFICATION_URL: http://classification-service:8082
-      EVENT_SUBSCRIBERS: http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos
+      CLASIFICACION_MODO: ${CLASIFICACION_MODO:-async}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
     depends_on:
       postgres: { condition: service_healthy }
@@ -1239,9 +1253,9 @@ Vence el 30/11 (demo en video de 15 minutos como máximo). Estado al 14/11:
 |---|---|---|
 | Cola de mensajes | RabbitMQ en el Compose, topología cargada al arrancar, contrato en `contracts/messaging/` (ADR-11) | Hecho |
 | Productores y consumidores | notification-service consume `notificaciones.eventos` | Hecho |
-| | ticket-service publica por RabbitMQ con Transactional Outbox (reemplaza a `HttpEventSender`) | Pendiente |
+| | ticket-service publica por RabbitMQ con Transactional Outbox (reemplaza a `HttpEventSender`, ADR-12) | Hecho |
 | | reporting-service consume `reportes.eventos` | Pendiente |
-| Clasificación por cola | `ClasificacionSolicitada` → worker de classification-service → `ClasificacionGenerada` (10.5); `POST /api/tickets` responde en `PENDIENTE_CLASIFICACION` | Pendiente |
+| Clasificación por cola | `ClasificacionSolicitada` → worker de classification-service → `ClasificacionGenerada` (10.5); `POST /api/tickets` responde en `PENDIENTE_CLASIFICACION`; plan B con `CLASIFICACION_MODO=sync` | Hecho |
 | API externa real | Mail real por SMTP en notification-service (`EMAIL_PROVIDER=real`) | Hecho, probado con Gmail: evento publicado en RabbitMQ → mail recibido |
 | Servicio SOAP | `ConsultarEstadoTicket` en ticket-service, WSDL en `contracts/soap/` (ADR-10) | Hecho |
 | Frontend | Repo aparte (React, Vite y TypeScript) contra el gateway; CORS en el gateway | En curso |
