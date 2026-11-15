@@ -43,8 +43,8 @@ Si está `RABBITMQ_URL`, el servicio escucha la cola `notificaciones.eventos` en
 | Caso | Respuesta al broker |
 |---|---|
 | Evento procesado, repetido o que no notifica | `ack` |
-| Sobre inválido (no cumple el esquema) o `TicketAsignado` sin agente | `nack` sin reencolar: va a `notificaciones.eventos.dlq` |
-| Falla transitoria (Mongo caído, error inesperado) | `nack` con reencolado; después de 5 reintentos RabbitMQ lo manda a la dead-letter |
+| Sobre inválido (no cumple el esquema) o `TicketAsignado` sin agente | `reject` sin reencolar: va a `notificaciones.eventos.dlq` |
+| Falla transitoria (Mongo caído, error inesperado) | `reject` con reencolado; después de 5 reintentos RabbitMQ lo manda a la dead-letter |
 
 - El `ack` se manda recién después de guardar la notificación.
 - Si RabbitMQ se cae o la cola todavía no existe, el consumidor reintenta cada 5 segundos y se reconecta solo.
