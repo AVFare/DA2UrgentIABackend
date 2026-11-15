@@ -10,10 +10,12 @@ async function gatewayDePrueba(
     sinNotificacion = false,
     sinSeguridad = false,
     errorReportes = false,
+    clasificacionPorCola = false,
   } = {},
 ) {
   let creados = 0,
-    consultas = 0;
+    consultas = 0,
+    consultasDelTicket = 0;
   const correlaciones = new Set();
   const servidor = createServer(async (req, res) => {
     const ruta = new URL(req.url, 'http://localhost');
@@ -54,14 +56,30 @@ async function gatewayDePrueba(
     if (ruta.pathname === '/api/tickets') {
       creados++;
       return responder(
-        {
-          id: 'ticket-propio',
-          prioridad: 'P1',
-          estado: 'ESCALADO',
-          solicitanteId: 'usuario-prueba',
-        },
+        clasificacionPorCola
+          ? {
+              id: 'ticket-propio',
+              prioridad: null,
+              estado: 'PENDIENTE_CLASIFICACION',
+              solicitanteId: 'usuario-prueba',
+            }
+          : {
+              id: 'ticket-propio',
+              prioridad: 'P1',
+              estado: 'ESCALADO',
+              solicitanteId: 'usuario-prueba',
+            },
         201,
       );
+    }
+    if (ruta.pathname === '/api/tickets/ticket-propio') {
+      consultasDelTicket++;
+      return responder({
+        id: 'ticket-propio',
+        prioridad: consultasDelTicket < 2 ? null : 'P1',
+        estado: consultasDelTicket < 2 ? 'PENDIENTE_CLASIFICACION' : 'ESCALADO',
+        solicitanteId: 'usuario-prueba',
+      });
     }
     if (ruta.pathname === '/api/reportes/tickets') {
       consultas++;
@@ -112,6 +130,7 @@ async function gatewayDePrueba(
     base: `http://127.0.0.1:${servidor.address().port}`,
     creados: () => creados,
     consultas: () => consultas,
+    consultasDelTicket: () => consultasDelTicket,
     correlaciones,
   };
 }
@@ -126,6 +145,17 @@ test('espera la consistencia eventual sin repetir la creacion y conserva un CID 
   assert.equal(gateway.creados(), 1);
   assert.equal(gateway.consultas(), 2);
   assert.deepEqual([...gateway.correlaciones], [resultado.correlationId]);
+});
+
+test('con la clasificacion por cola espera a que el ticket deje de estar pendiente', async (t) => {
+  const gateway = await gatewayDePrueba(t, { clasificacionPorCola: true });
+  const resultado = await verificarIntegracion(gateway.base, {
+    timeoutMs: 2000,
+    intervaloMs: 1,
+  });
+  assert.equal(resultado.ticketId, 'ticket-propio');
+  assert.equal(gateway.creados(), 1);
+  assert.equal(gateway.consultasDelTicket(), 2);
 });
 
 test('no confunde una proyeccion ajena con el ticket de esta ejecucion', async (t) => {
