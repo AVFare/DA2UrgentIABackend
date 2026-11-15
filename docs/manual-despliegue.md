@@ -77,7 +77,8 @@ cada grupo (la lista completa de variables está en la
 | `JWT_SECRET` | Al menos 32 caracteres. El gateway y user-service tienen que usar el mismo, y el Compose se los pasa a los dos |
 | `POSTGRES_PASSWORD`, `*_DB_PASSWORD`, `MONGO_ROOT_PASSWORD` | Se usan **solo la primera vez**, cuando se crean los volúmenes. Si se cambian después, ver [Problemas comunes](#8-problemas-comunes) |
 | `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | Usuario y clave del broker y de su consola. **Sin caracteres especiales** (`@ : / # ?`): el Compose los arma en la URL `amqp://usuario:clave@rabbitmq:5672`. También se usan solo la primera vez |
-| `LLM_PROVIDER` | `mock` (por defecto): clasifica por palabras clave, sin internet ni API key. Ver [sección 6](#6-ia-y-correo-en-modo-de-prueba) |
+| `LLM_PROVIDER` | `mock` (por defecto): clasifica por palabras clave, sin internet ni API key. Ver [sección 6](#6-ia-y-correo) |
+| `EMAIL_PROVIDER`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_DESTINO_DEMO` | `simulado` (por defecto): el mail solo se escribe en el log y las otras tres quedan vacías. Con `real` sale por Gmail y las tres son obligatorias. Ver [Correo](#correo) |
 | `CORS_ALLOWED_ORIGINS` | Orígenes del front que acepta el gateway. Por defecto `http://localhost:5173`, que es el del front tanto con Vite como con su contenedor. Ver [sección 9.2](#92-configurar-el-env) |
 
 ## 4. Levantar todo
@@ -175,10 +176,22 @@ en cada `docker compose up`, así que aparece aunque ningún servicio esté cone
    `notificaciones.eventos`, `reportes.eventos`, `clasificacion.solicitudes`,
    `tickets.clasificaciones` y la `.dlq` de cada una.
 
-En la pestaña **Connections** aparece una conexión por cada servicio que ya tiene su código AMQP.
-Mientras no lo tengan, está vacía, y eso es lo esperado.
+Los servicios que ya tienen su código AMQP se conectan solos al arrancar:
 
-## 6. IA y correo en modo de prueba
+6. En la pestaña **Connections** hay **tres** conexiones, todas con el usuario de `RABBITMQ_USER` y
+   estado `running`: las de notification-service, reporting-service y classification-service. Las
+   conexiones se nombran por IP y puerto, no por servicio. ticket-service todavía no usa el broker
+   (sigue mandando los eventos por HTTP), así que no tiene conexión; user-service y el gateway
+   nunca la tienen.
+7. Para ver qué servicio consume qué, en **Queues and Streams** entrar a cada cola y mirar la sección
+   **Consumers**: tienen un consumidor `notificaciones.eventos` (notification-service),
+   `reportes.eventos` (reporting-service) y `clasificacion.solicitudes` (classification-service).
+   `tickets.clasificaciones` y las `.dlq` no tienen ninguno.
+
+Si hay menos de tres conexiones, ver el log del servicio que falta: los tres reintentan cada
+5 segundos mientras no pueden conectarse.
+
+## 6. IA y correo
 
 ### Clasificación (`LLM_PROVIDER`)
 
@@ -201,12 +214,17 @@ muestra `Listo: LLM_PROVIDER=...`.
 
 ### Correo
 
-Hoy notification-service **simula** el envío: en lugar de mandar un mail escribe una línea
-`EMAIL_SIMULADO` en su log, con el destinatario, el asunto y el mensaje. No hace falta configurar
-nada. El envío real (variable `EMAIL_PROVIDER`) se suma con el trabajo de P5.
+notification-service manda un mail cuando un ticket se escala a la guardia (`TicketEscalado`) y
+cuando se resuelve (`TicketResuelto`). Cómo lo manda depende de `EMAIL_PROVIDER`:
 
-Para ver un correo simulado, correr el flujo de la demo, que crea un ticket crítico y lo escala a
-la guardia:
+| `EMAIL_PROVIDER` | Qué hace |
+|---|---|
+| `simulado` (por defecto) | No manda nada: escribe una línea `EMAIL_SIMULADO` en el log, con el destinatario, el asunto y el mensaje. No hace falta configurar nada. Es lo que usan el CI y los tests |
+| `real` | Manda el mail por SMTP con STARTTLS (Gmail) y escribe una línea `EMAIL_ENVIADO` en el log |
+
+#### Probar el modo simulado
+
+Correr el flujo de la demo, que crea un ticket crítico y lo escala a la guardia:
 
 ```powershell
 # Windows (PowerShell)
@@ -222,6 +240,109 @@ docker compose logs notification-service | grep EMAIL_SIMULADO
 
 **Salió bien si** newman termina sin pruebas fallidas y aparece al menos una línea `EMAIL_SIMULADO`
 con `GRUPO:GUARDIA` como destinatario.
+
+#### Configurar el mail real
+
+Variables del `.env` (las primeras cuatro están en `.env.example`; `SMTP_HOST` y `SMTP_PORT` no,
+porque el Compose ya trae los valores de Gmail):
+
+| Variable | Por defecto | Qué poner |
+|---|---|---|
+| `EMAIL_PROVIDER` | `simulado` | `real` |
+| `SMTP_USER` | vacía | La cuenta de Gmail que manda los mails (por ejemplo `cuenta.demo@gmail.com`). También es el remitente |
+| `SMTP_PASSWORD` | vacía | Una **contraseña de aplicación** de esa cuenta (ver abajo), no la contraseña normal |
+| `EMAIL_DESTINO_DEMO` | vacía | La casilla a la que llegan **todos** los mails |
+| `SMTP_HOST` | `smtp.gmail.com` | Cambiarla solo para usar otro servidor SMTP |
+| `SMTP_PORT` | `587` | Ídem |
+
+Por qué una sola casilla de destino: los usuarios semilla tienen direcciones `@urgentia.local`, que no
+existen. Por eso todos los mails van a `EMAIL_DESTINO_DEMO`, y el destinatario original queda al
+principio del asunto y al final del mensaje.
+
+**La contraseña de aplicación.** Gmail no acepta la contraseña normal de la cuenta para mandar por
+SMTP. Hace falta una contraseña de aplicación: un código de 16 caracteres que Google genera para un
+solo uso y que se puede revocar sin tocar la contraseña de la cuenta. Para crearla:
+
+1. En la cuenta de Google que va en `SMTP_USER`, activar la **Verificación en 2 pasos** (Cuenta de
+   Google → **Seguridad**). Sin ella, Google no ofrece contraseñas de aplicación.
+2. Abrir https://myaccount.google.com/apppasswords, escribir un nombre (por ejemplo `UrgentIA`) y
+   apretar **Crear**.
+3. Copiar el código que aparece: Google lo muestra una sola vez, en cuatro grupos de cuatro letras.
+   En el `.env` conviene pegarlo sin espacios; si quedan, el servicio los saca antes de usarlo.
+
+La contraseña de aplicación va **solo en el `.env`**, que no se sube al repositorio. No ponerla en
+`.env.example`, en `docker-compose.yml`, en capturas ni en el video.
+
+Ejemplo de `.env` (los valores son de ejemplo):
+
+```dotenv
+EMAIL_PROVIDER=real
+SMTP_USER=cuenta.demo@gmail.com
+SMTP_PASSWORD=abcdefghijklmnop
+EMAIL_DESTINO_DEMO=casilla.de.prueba@gmail.com
+```
+
+Con `EMAIL_PROVIDER=real`, si `SMTP_USER`, `SMTP_PASSWORD` o `EMAIL_DESTINO_DEMO` está vacía,
+**notification-service no arranca**: el contenedor termina y su log dice qué falta, por ejemplo
+`EMAIL_PROVIDER=real necesita SMTP_PASSWORD, EMAIL_DESTINO_DEMO`.
+
+Después de cambiar el `.env`, recrear el servicio para que lo tome (reiniciarlo no alcanza):
+
+```powershell
+docker compose up -d --wait notification-service
+```
+
+**Salió bien si** el comando termina sin error y `docker compose ps notification-service` lo muestra
+`Up ... (healthy)`. Si termina con un error que dice que el contenedor salió (`exited`), ver
+`docker compose logs notification-service`: casi siempre es una de las tres variables vacía.
+
+Para volver al modo simulado, poner `EMAIL_PROVIDER=simulado` y recrear el servicio de la misma
+forma.
+
+#### Verificar que el mail sale de verdad
+
+1. Correr el flujo de la demo con newman, igual que en el modo simulado.
+2. Buscar la línea del envío en el log:
+
+   ```powershell
+   # Windows (PowerShell)
+   docker compose logs notification-service | Select-String EMAIL_ENVIADO
+   ```
+
+   ```bash
+   # Linux
+   docker compose logs notification-service | grep EMAIL_ENVIADO
+   ```
+
+   **Salió bien si** aparece al menos una línea `EMAIL_ENVIADO` con `"destinatario": "GRUPO:GUARDIA"`,
+   `"para"` igual a `EMAIL_DESTINO_DEMO` y `"servidor": "smtp.gmail.com:587"`.
+3. Abrir la casilla de `EMAIL_DESTINO_DEMO`. Tiene que haber un mail de `SMTP_USER` con el asunto
+   `[GRUPO:GUARDIA] [P1] Ticket escalado: No puede ingresar nadie` (el título del ticket crítico de la
+   demo). El mensaje termina con `Destinatario original: GRUPO:GUARDIA` y `-- UrgentIA`. Si no está
+   en la bandeja de entrada, buscar en **Spam**.
+
+newman pasa aunque el mail no salga: su prueba de la notificación solo comprueba que quedó
+registrada, no que se mandó. Lo que confirma el envío es la línea `EMAIL_ENVIADO` y el mail en la
+casilla.
+
+#### Problemas comunes del correo
+
+Si el servidor SMTP rechaza el mail o no responde, el servicio **no se cae**: guarda la notificación
+con estado `FALLIDA`, da el evento por procesado y escribe en el log una línea
+`No se pudo enviar la notificacion` con la excepción en el campo `error`. Para verla:
+
+```powershell
+docker compose logs notification-service | Select-String "No se pudo enviar"
+```
+
+| Síntoma | Causa probable | Qué hacer |
+|---|---|---|
+| `docker compose up` termina con `notification-service` salido, y su log dice `EMAIL_PROVIDER=real necesita ...` | Falta alguna de las variables que nombra el mensaje | Completarla en el `.env` y recrear el servicio |
+| `No se pudo enviar la notificacion` con `SMTPAuthenticationError` y `Username and Password not accepted` en `error` | Gmail rechazó el usuario o la clave: se usó la contraseña normal en vez de una de aplicación, la de aplicación se copió mal o se revocó, o `SMTP_USER` no es la cuenta que la generó | Generar una contraseña de aplicación nueva en la cuenta de `SMTP_USER`, pegarla en `SMTP_PASSWORD` y recrear el servicio |
+| No aparece la opción de contraseñas de aplicación en la cuenta de Google | La cuenta no tiene la Verificación en 2 pasos activada | Activarla y volver a https://myaccount.google.com/apppasswords |
+| `No se pudo enviar la notificacion` con un error de conexión o de tiempo de espera | La red bloquea la salida al puerto 587 (pasa en algunas redes corporativas o de facultad), o `SMTP_HOST` / `SMTP_PORT` están mal | Probar desde otra red, o revisar esas dos variables |
+| No hay `EMAIL_ENVIADO` ni `No se pudo enviar`, solo `EMAIL_SIMULADO` | El servicio sigue con `EMAIL_PROVIDER=simulado`: se editó el `.env` pero no se recreó | `docker compose up -d --wait notification-service` |
+| Hay `EMAIL_ENVIADO` pero el mail no está en la casilla | Lo filtró el correo no deseado, o `EMAIL_DESTINO_DEMO` tiene un error de tipeo (el campo `para` del log muestra adónde se mandó) | Buscar en **Spam**; si `para` está mal, corregir la variable y recrear el servicio |
 
 ## 7. Apagar y resetear
 
@@ -412,18 +533,34 @@ Después de cambiar `VITE_API_URL`, volver a correr `docker compose up -d --buil
    **Salió bien si** responde `200` y `Access-Control-Allow-Origin` es `http://localhost:5173`. Si el
    origen no está permitido, el gateway responde `403` (en PowerShell, `Invoke-WebRequest` lo muestra
    como error).
-5. **Llamada real desde el front.** Es la prueba que confirma todo junto, porque sale del navegador
-   con el origen del front. Abrir http://localhost:5173, apretar `F12`, ir a la pestaña **Console**,
-   pegar esto y apretar Enter:
+5. **Login desde el front.** Es la prueba que confirma todo junto, porque las llamadas salen del
+   navegador con el origen del front.
 
-   ```js
-   await fetch('http://localhost:8080/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'solicitante@urgentia.local', password: 'Usuario123!' }) }).then(r => r.status)
-   ```
+   1. Abrir http://localhost:5173/login. Tiene que verse la pantalla **Iniciar sesión**, con los
+      campos **Email** y **Contraseña** y el botón **Ingresar**. Si en cambio abre directo otra
+      pantalla, ya había una sesión guardada en el navegador: apretar **Cerrar sesión** (arriba), que
+      vuelve a `/login`.
+   2. Apretar `F12`, ir a la pestaña **Network** y, en el cuadro de filtro, escribir `8080` para ver
+      solo las llamadas al gateway.
+   3. Ingresar con el usuario semilla `solicitante@urgentia.local` y la contraseña `Usuario123!`, y
+      apretar **Ingresar**.
 
-   Chrome y Edge pueden bloquear el pegado la primera vez: escribir `allow pasting`, Enter, y volver a
-   pegar. **Salió bien si** devuelve `200`; en la pestaña **Network** aparecen un `OPTIONS` y un `POST`
-   a `login`, los dos con estado 200. Cuando el login del front esté integrado, la prueba equivalente
-   es entrar por http://localhost:5173/login con ese mismo usuario.
+   **Salió bien si:**
+
+   - El navegador pasa a http://localhost:5173/mis-tickets, con el título **Mis tickets**. Si el
+     solicitante todavía no creó tickets, se ve el aviso **Todavía no creaste tickets**; si ya se
+     corrió la demo, aparecen sus tickets. Arriba se ve el nombre **Sofía Solicitante** con el rol
+     `SOLICITANTE` y el botón **Cerrar sesión**.
+   - En **Network** aparecen un `OPTIONS` y un `POST` a `login`, los dos con estado 200, y después
+     las llamadas a `tickets` (un `OPTIONS` y un `GET`), también con 200.
+
+   Con un usuario de rol `AGENTE` o `ADMIN` (por ejemplo `guardia@urgentia.local` / `Agente123!`), el
+   login lleva a http://localhost:5173/tickets, la bandeja, en lugar de a `mis-tickets`.
+
+   Si el formulario muestra **El email o la contraseña no son correctos.**, el `POST` llegó al gateway
+   y user-service respondió 401: revisar el usuario y la clave, o esperar unos segundos si el backend
+   recién arrancó. Si muestra **No pudimos conectarnos. Revisá tu conexión e intentá nuevamente.**, la
+   llamada no llegó: ver los problemas de CORS y de conexión en [9.5](#95-problemas-comunes-del-frontend).
 
 ### 9.5 Problemas comunes del frontend
 
@@ -438,4 +575,4 @@ Después de cambiar `VITE_API_URL`, volver a correr `docker compose up -d --buil
 | La build falla en `npm ci` | Sin internet, o un proxy la bloquea | Revisar la conexión y repetir |
 | La build falla en `npm run build` con errores de TypeScript | La build verifica tipos: la rama tiene un error de compilación | Avisar al responsable del front; no se arregla desde el despliegue |
 | `--wait` termina con `unhealthy` | Nginx no arrancó | `docker compose logs frontend` |
-| La llamada de la prueba 9.4.5 da `401` recién levantado el backend | user-service todavía está cargando los usuarios semilla | Esperar unos segundos y repetir, como en la [sección 5.3](#53-login) |
+| En la prueba 9.4.5, el login muestra **El email o la contraseña no son correctos.** recién levantado el backend, con un usuario semilla bien escrito | user-service todavía está cargando los usuarios semilla | Esperar unos segundos y repetir, como en la [sección 5.3](#53-login) |
