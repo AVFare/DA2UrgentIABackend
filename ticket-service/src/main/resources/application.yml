@@ -64,12 +64,6 @@ clasificacion:
   url: ${CLASSIFICATION_URL:http://localhost:8082}
   timeout-ms: ${CLASSIFICATION_TIMEOUT_MS:7000}
 
-# Envio de eventos (seccion 10.3). EVENT_SUBSCRIBERS: URLs separadas por coma.
-eventos:
-  suscriptores: ${EVENT_SUBSCRIBERS:}
-  reintentos-ms: 1000,2000,4000
-  timeout-ms: 5000
-
 # Transactional Outbox (ADR-12): cada intervalo-ms se publican las filas pendientes en RabbitMQ.
 outbox:
   publicador:
