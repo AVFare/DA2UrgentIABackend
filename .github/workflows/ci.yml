@@ -200,6 +200,11 @@ jobs:
           done
           exit "$faltan"
 
+      # Publica a mano un TicketEscalado y un ClasificacionSolicitada por la API de administracion y
+      # verifica que los procesen notification, reporting y classification sin dejar nada en las DLQ.
+      - name: Probar la mensajeria publicando a mano en RabbitMQ
+        run: node infra/ci/verificar-mensajeria.cjs
+
       - name: Mostrar estado y logs si algo fallo
         if: failure()
         run: |
