@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from pymongo import AsyncMongoClient
 
 from app.application.clasificacion_facade import ClasificacionFacade
+from app.application.procesador_de_solicitudes import ProcesadorDeSolicitudes
 from app.config import PUERTO, VERSION, get_settings
 from app.infrastructure.api.correlation import registrar_correlation_id
 from app.infrastructure.api.errors import registrar_manejadores_de_error
@@ -20,6 +21,11 @@ from app.infrastructure.api.openapi import DESCRIPCION, generar_openapi
 from app.infrastructure.api.routes import clasificaciones, health
 from app.infrastructure.llm.factory import crear_llm_provider
 from app.infrastructure.logs import configurar_logs
+from app.infrastructure.messaging.conexion import ConexionRabbitMq
+from app.infrastructure.messaging.consumidor import ConsumidorDeSolicitudes
+from app.infrastructure.messaging.manejador import ManejadorDeSolicitudes
+from app.infrastructure.messaging.publicador import RabbitMqPublicador
+from app.infrastructure.messaging.topologia import Topologia
 from app.infrastructure.persistence.clasificacion_repository import COLECCION, MongoClasificacionRepository
 from app.infrastructure.prompts import cargar_plantilla
 
@@ -53,12 +59,27 @@ async def _ciclo_de_vida(app: FastAPI) -> AsyncGenerator[None]:
     # En segundo plano: el servicio atiende pedidos mientras el LLM se prepara.
     precalentado = asyncio.create_task(facade.precalentar())
 
-    log.info("Listo: LLM_PROVIDER=%s, modelo=%s, prompt=%s", proveedor.nombre, proveedor.modelo,
-             settings.prompt_version)
+    tareas = [precalentado]
+    rabbitmq_url = settings.rabbitmq_url.get_secret_value()
+    conexion_rabbitmq = ConexionRabbitMq(rabbitmq_url)
+    if rabbitmq_url:
+        topologia = Topologia()
+        procesador = ProcesadorDeSolicitudes(facade, repositorio, RabbitMqPublicador(conexion_rabbitmq, topologia))
+        consumidor = ConsumidorDeSolicitudes(
+            conexion_rabbitmq, ManejadorDeSolicitudes(procesador), topologia, settings.cola_prefetch
+        )
+        # En segundo plano: la API responde aunque RabbitMQ todavia no este disponible.
+        tareas.append(asyncio.create_task(consumidor.ejecutar()))
+
+    log.info("Listo: LLM_PROVIDER=%s, modelo=%s, prompt=%s, cola=%s", proveedor.nombre, proveedor.modelo,
+             settings.prompt_version, "si" if rabbitmq_url else "no")
     try:
         yield
     finally:
-        precalentado.cancel()
+        for tarea in tareas:
+            tarea.cancel()
+        await asyncio.gather(*tareas, return_exceptions=True)
+        await conexion_rabbitmq.cerrar()
         await proveedor.cerrar()
         await cliente_mongo.close()
 

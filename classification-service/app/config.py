@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     llm_base_url: str = ""
     llm_timeout_ms: int = Field(default=5000, gt=0)
     prompt_version: str = "full"
+    # Sin RABBITMQ_URL el servicio atiende solo por la API, sin consumir la cola.
+    rabbitmq_url: SecretStr = SecretStr("")
+    # Cuantas solicitudes de la cola se procesan a la vez.
+    cola_prefetch: int = Field(default=10, gt=0)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     @field_validator("llm_provider", "log_level", mode="before")

@@ -7,11 +7,13 @@ Usa la base classification_test y la borra al terminar.
 
 import asyncio
 import os
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import pytest
 from pymongo import AsyncMongoClient
+from pymongo.errors import DuplicateKeyError
 
 from app.domain.models import RegistroClasificacion
 from app.infrastructure.persistence.clasificacion_repository import COLECCION, MongoClasificacionRepository
@@ -21,6 +23,7 @@ MONGO_URI_TEST = os.getenv("MONGO_URI_TEST")
 BASE_DE_TEST = "classification_test"
 TICKET_A = UUID("7c9e6679-7425-40de-944b-e07fc1f90ae7")
 TICKET_B = UUID("11111111-1111-4111-8111-111111111111")
+SOLICITUD = UUID("0b7e1f0a-6c1d-4f6e-9a55-2d1c3e4f5a6b")
 INICIO = datetime(2026, 10, 5, 14, 0, 0, tzinfo=timezone.utc)
 
 pytestmark = pytest.mark.skipif(not MONGO_URI_TEST, reason="Definir MONGO_URI_TEST para correr contra MongoDB")
@@ -88,5 +91,30 @@ def test_lista_mas_reciente_primero_filtrado_y_paginado():
         assert (primera.total, primera.total_pages) == (3, 2)
         assert todas.total == 4
         assert todas.elementos[0].ticket_id == TICKET_B
+
+    con_repositorio(prueba)
+
+
+def test_busca_el_registro_de_una_solicitud():
+    async def prueba(repositorio, coleccion):
+        de_la_api = await repositorio.guardar(registro(TICKET_A, 0))
+        de_la_cola = await repositorio.guardar(replace(registro(TICKET_A, 5), solicitud_id=SOLICITUD))
+
+        assert await repositorio.buscar_por_solicitud(SOLICITUD) == de_la_cola
+        assert await repositorio.buscar_por_solicitud(TICKET_B) is None
+        assert de_la_api.solicitud_id is None
+        assert "solicitudId" not in await coleccion.find_one({"fecha": de_la_api.fecha})
+
+    con_repositorio(prueba)
+
+
+def test_una_solicitud_no_se_guarda_dos_veces():
+    async def prueba(repositorio, _):
+        await repositorio.guardar(replace(registro(TICKET_A, 0), solicitud_id=SOLICITUD))
+        await repositorio.guardar(registro(TICKET_A, 1))
+        await repositorio.guardar(registro(TICKET_A, 2))
+
+        with pytest.raises(DuplicateKeyError):
+            await repositorio.guardar(replace(registro(TICKET_A, 5), solicitud_id=SOLICITUD))
 
     con_repositorio(prueba)

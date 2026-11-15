@@ -66,6 +66,7 @@ class RegistroClasificacion:
     """Una clasificacion guardada: la sugerencia de la IA y como se obtuvo.
 
     texto_enmascarado y respuesta_cruda nunca contienen datos personales.
+    solicitud_id identifica la solicitud que llego por la cola; no esta si se pidio por la API.
     """
 
     ticket_id: UUID
@@ -78,6 +79,7 @@ class RegistroClasificacion:
     texto_enmascarado: str
     respuesta_cruda: str
     id: str | None = None
+    solicitud_id: UUID | None = None
 
 
 def _enum[E: StrEnum](tipo: type[E], valor: object, campo: str) -> E:

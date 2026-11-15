@@ -45,6 +45,7 @@ Todos están en [`docs/diagrams/`](docs/diagrams), como fuente PlantUML (`.puml`
 | Proceso de atención de un ticket (BPMN simplificado) | [`bpmn-atencion-ticket`](docs/diagrams/bpmn-atencion-ticket.png) |
 | Secuencia: crear un ticket crítico | [`secuencia-crear-ticket-critico`](docs/diagrams/secuencia-crear-ticket-critico.png) |
 | Secuencia: IA caída y reclasificación | [`secuencia-ia-caida`](docs/diagrams/secuencia-ia-caida.png) |
+| Secuencia: clasificación por cola de mensajes | [`secuencia-clasificacion-por-cola`](docs/diagrams/secuencia-clasificacion-por-cola.png) |
 | Clases del dominio de tickets | [`clases-ticket`](docs/diagrams/clases-ticket.png) |
 | Estados del ticket | [`estados-ticket`](docs/diagrams/estados-ticket.png) |
 | Capas de ticket-service (hexagonal) | [`capas-ticket-service`](docs/diagrams/capas-ticket-service.png) |
