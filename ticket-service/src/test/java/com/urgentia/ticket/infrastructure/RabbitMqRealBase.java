@@ -1,16 +1,19 @@
 package com.urgentia.ticket.infrastructure;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.Connection;
+import com.rabbitmq.client.ConnectionFactory;
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.Message;
@@ -24,7 +27,7 @@ import org.testcontainers.utility.DockerImageName;
 
 /**
  * Base de los tests con un RabbitMQ real (Testcontainers), con la topologia del contrato
- * cargada igual que en el Compose: POST /api/definitions con contracts/messaging/rabbitmq-definitions.json.
+ * (contracts/messaging/rabbitmq-definitions.json) declarada antes de arrancar.
  * Prende el publicador del Outbox y el consumidor. Sin Docker, estos tests se saltean
  * (en el CI siempre corren).
  */
@@ -35,6 +38,8 @@ public abstract class RabbitMqRealBase extends IntegracionBase {
             "notificaciones.eventos", "reportes.eventos", "clasificacion.solicitudes", "tickets.clasificaciones",
             "notificaciones.eventos.dlq", "reportes.eventos.dlq", "clasificacion.solicitudes.dlq",
             "tickets.clasificaciones.dlq");
+
+    private static final Path DEFINICIONES = Path.of("../contracts/messaging/rabbitmq-definitions.json");
 
     private static RabbitMQContainer rabbit;
 
@@ -110,29 +115,59 @@ public abstract class RabbitMqRealBase extends IntegracionBase {
         rabbit().execInContainer("rabbitmqctl", "await_startup");
     }
 
+    /**
+     * Declara por AMQP los exchanges, las colas y los bindings de
+     * contracts/messaging/rabbitmq-definitions.json, tal cual estan en el archivo (mismos tipos y
+     * argumentos: colas quorum, x-delivery-limit, dead-letter). Al final comprueba que cada cola exista.
+     */
     private static void cargarTopologia(RabbitMQContainer contenedor) {
-        try {
-            String credenciales = Base64.getEncoder().encodeToString(
-                    (contenedor.getAdminUsername() + ":" + contenedor.getAdminPassword())
-                            .getBytes(StandardCharsets.UTF_8));
-            HttpRequest pedido = HttpRequest.newBuilder(URI.create(contenedor.getHttpUrl() + "/api/definitions"))
-                    .header("Authorization", "Basic " + credenciales)
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofFile(
-                            Path.of("../contracts/messaging/rabbitmq-definitions.json")))
-                    .timeout(Duration.ofSeconds(30))
-                    .build();
-            HttpResponse<String> respuesta = HttpClient.newHttpClient()
-                    .send(pedido, HttpResponse.BodyHandlers.ofString());
-            if (respuesta.statusCode() / 100 != 2) {
-                throw new IllegalStateException("No se pudo cargar la topologia: " + respuesta.statusCode() + " "
-                        + respuesta.body());
+        ConnectionFactory fabrica = new ConnectionFactory();
+        fabrica.setHost(contenedor.getHost());
+        fabrica.setPort(contenedor.getAmqpPort());
+        fabrica.setUsername(contenedor.getAdminUsername());
+        fabrica.setPassword(contenedor.getAdminPassword());
+        try (Connection conexion = fabrica.newConnection(); Channel canal = conexion.createChannel()) {
+            JsonNode definiciones = new ObjectMapper().readTree(DEFINICIONES.toFile());
+            for (JsonNode exchange : definiciones.path("exchanges")) {
+                canal.exchangeDeclare(exchange.get("name").asText(), exchange.get("type").asText(),
+                        exchange.path("durable").asBoolean(true), exchange.path("auto_delete").asBoolean(false),
+                        exchange.path("internal").asBoolean(false), argumentos(exchange.path("arguments")));
             }
-        } catch (IOException e) {
-            throw new IllegalStateException("No se pudo cargar la topologia", e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Se interrumpio la carga de la topologia", e);
+            for (JsonNode cola : definiciones.path("queues")) {
+                canal.queueDeclare(cola.get("name").asText(), cola.path("durable").asBoolean(true), false,
+                        cola.path("auto_delete").asBoolean(false), argumentos(cola.path("arguments")));
+            }
+            for (JsonNode binding : definiciones.path("bindings")) {
+                if ("queue".equals(binding.path("destination_type").asText())) {
+                    canal.queueBind(binding.get("destination").asText(), binding.get("source").asText(),
+                            binding.path("routing_key").asText(), argumentos(binding.path("arguments")));
+                } else {
+                    canal.exchangeBind(binding.get("destination").asText(), binding.get("source").asText(),
+                            binding.path("routing_key").asText(), argumentos(binding.path("arguments")));
+                }
+            }
+            for (String cola : COLAS) {
+                canal.queueDeclarePassive(cola);
+            }
+        } catch (IOException | TimeoutException e) {
+            throw new IllegalStateException("No se pudo cargar la topologia de " + DEFINICIONES, e);
         }
+    }
+
+    private static Map<String, Object> argumentos(JsonNode nodo) {
+        Map<String, Object> argumentos = new HashMap<>();
+        nodo.properties().forEach(campo -> {
+            JsonNode valor = campo.getValue();
+            if (valor.isInt()) {
+                argumentos.put(campo.getKey(), valor.intValue());
+            } else if (valor.isLong()) {
+                argumentos.put(campo.getKey(), valor.longValue());
+            } else if (valor.isBoolean()) {
+                argumentos.put(campo.getKey(), valor.booleanValue());
+            } else {
+                argumentos.put(campo.getKey(), valor.asText());
+            }
+        });
+        return argumentos;
     }
 }
