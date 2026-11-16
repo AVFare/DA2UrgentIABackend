@@ -978,7 +978,7 @@ Descripción: {descripcion}
 
 Los errores de escalamiento de los modelos chicos son todos de más (escalan casos de un área); ningún modelo dejó sin escalar un caso crítico.
 
-La evaluación del 14/11/2026 con Groq `qwen/qwen3.8-27b` y el prompt `full` repitió esos valores (mediana 0,6 s, máxima 1,0 s). Los requisitos de IA con su resultado y las decisiones de diseño están en `docs/ia/requisitos-y-decisiones.md`.
+La evaluación del 14/11/2026 con Groq `qwen/qwen3.8-27b` y el prompt `full` repitió esos valores (mediana 0,6 s, máxima 1,0 s). Los requisitos de IA con su resultado y las decisiones de diseño están en `docs/ia/requisitos-y-decisiones.md`; la prueba de carga, en `tests/carga/README.md`.
 **Caso de privacidad (test de `masking.py`):** "Soy Juan, mi mail es juan.perez@empresa.com y mi celular 11-5555-1234, DNI 30.123.456" → no debe quedar ningún dato original en el texto enviado ni en Mongo.
 
 ---

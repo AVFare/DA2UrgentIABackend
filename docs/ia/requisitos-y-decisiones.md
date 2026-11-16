@@ -89,3 +89,8 @@ La comparación entre proveedores, modelos y prompts está en la sección 12.3 d
 | Integración con MongoDB | Guardado, paginado e índice único por solicitud | `MONGO_URI_TEST=... pytest tests/test_mongo_repository.py` |
 | Integración con RabbitMQ | Consumo, respuesta, error del LLM, solicitud repetida, reintentos y cola de mensajes muertos | `RABBITMQ_URL_TEST=... pytest tests/test_rabbitmq_worker.py` |
 | Evaluación de 20 casos | Exactitud y latencia con el proveedor real (RIA01 y RIA02) | `python -m scripts.evaluar` |
+| Carga básica | Tiempo del alta y de la clasificación, errores y tamaño de las colas | [`tests/carga/`](../../tests/carga/README.md) |
+
+En la prueba de carga con el mock, por la cola se procesaron 7007 solicitudes a 100 por segundo
+sin perder ninguna: la cola llegó a 2912 mensajes y se vació sola en 50 s. Creando tickets por el
+gateway a 10 por segundo, la clasificación llega en 0,8 s (mediana).
