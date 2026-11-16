@@ -1,6 +1,6 @@
 # ADR-06: Clasificación por REST sincrónico, con timeout y fallback
 
-**Estado:** aceptada (para la Primera Parte)
+**Estado:** reemplazada por [ADR-12](ADR-12-transactional-outbox.md) en la Entrega 2. Sigue disponible como plan B con `CLASIFICACION_MODO=sync`, y la reclasificación manual sigue por REST.
 
 ## Contexto
 
@@ -17,4 +17,4 @@ La Primera Parte no exige mensajería, y el ticket tiene que tener prioridad ape
 - El solicitante recibe la prioridad en la misma respuesta.
 - La creación de un ticket puede tardar hasta 7 s, porque queda acoplada en el tiempo a la IA.
 - La creación nunca falla por culpa de la IA.
-- En la parte 2, la clasificación pasa a la cola de mensajes.
+- En la parte 2, la clasificación pasa a la cola de mensajes (ADR-12).
