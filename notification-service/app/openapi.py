@@ -16,8 +16,8 @@ SERVIDORES = [
     {"url": "http://localhost:8084", "description": "Directo al servicio (red interna)"},
 ]
 
-# /health es publica y /api/eventos es de la red interna (el gateway no la rutea): no piden token.
-RUTAS_SIN_TOKEN = {"/health", "/api/eventos"}
+# /health es publica: no pide token.
+RUTAS_SIN_TOKEN = {"/health"}
 
 
 def configurar_openapi(app: FastAPI) -> None:

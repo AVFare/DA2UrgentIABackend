@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  UrgentIA - servicio SOAP de consulta de estado de tickets (esquema).
+  Lo importa tickets.wsdl (se llama distinto para no chocar con el nombre del WSDL al publicarlos). Dueña: P3. Se implementa dentro de ticket-service.
+
+  Los valores de EstadoTicket y Prioridad son los de la seccion 7 de CONTEXTO_PROYECTO.md.
+  Los codigos de error son un subconjunto de la seccion 5.3.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:t="http://urgentia.local/ws/tickets"
+           targetNamespace="http://urgentia.local/ws/tickets"
+           elementFormDefault="qualified">
+
+  <xs:simpleType name="TicketId">
+    <xs:annotation>
+      <xs:documentation>Id del ticket: un UUID.</xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="EstadoTicket">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="NUEVO"/>
+      <xs:enumeration value="PENDIENTE_CLASIFICACION"/>
+      <xs:enumeration value="CLASIFICADO"/>
+      <xs:enumeration value="ASIGNADO"/>
+      <xs:enumeration value="EN_CURSO"/>
+      <xs:enumeration value="ESCALADO"/>
+      <xs:enumeration value="RESUELTO"/>
+      <xs:enumeration value="CERRADO"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="Prioridad">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="P1"/>
+      <xs:enumeration value="P2"/>
+      <xs:enumeration value="P3"/>
+      <xs:enumeration value="P4"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="CodigoError">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="VALIDACION"/>
+      <xs:enumeration value="NO_ENCONTRADO"/>
+      <xs:enumeration value="ERROR_INTERNO"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Pedido -->
+  <xs:element name="ConsultarEstadoTicketRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="ticketId" type="t:TicketId"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- Respuesta -->
+  <xs:element name="ConsultarEstadoTicketResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="ticketId" type="t:TicketId"/>
+        <xs:element name="estado" type="t:EstadoTicket"/>
+        <xs:element name="prioridad" type="t:Prioridad" minOccurs="0">
+          <xs:annotation>
+            <xs:documentation>
+              Falta si el ticket todavia no esta clasificado (NUEVO o PENDIENTE_CLASIFICACION):
+              la prioridad la calcula el dominio al clasificar.
+            </xs:documentation>
+          </xs:annotation>
+        </xs:element>
+        <xs:element name="fechaLimiteSla" type="xs:dateTime" minOccurs="0">
+          <xs:annotation>
+            <xs:documentation>
+              Vencimiento del SLA, en UTC (ejemplo: 2026-11-14T15:03:11Z). Falta cuando el ticket
+              no esta clasificado, igual que la prioridad.
+            </xs:documentation>
+          </xs:annotation>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- Detalle de los SOAP Fault -->
+  <xs:element name="ErrorDetalle">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="codigo" type="t:CodigoError"/>
+        <xs:element name="mensaje" type="xs:string"/>
+        <xs:element name="correlationId" type="xs:string" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

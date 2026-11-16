@@ -23,6 +23,10 @@ class MongoClasificacionRepository:
     async def crear_indices(self) -> None:
         await self._coleccion.create_index([("ticketId", ASCENDING), ("fecha", DESCENDING)])
         await self._coleccion.create_index([("fecha", DESCENDING)])
+        # Unico solo entre los registros que vienen de la cola: una solicitud se guarda una vez.
+        await self._coleccion.create_index(
+            "solicitudId", unique=True, partialFilterExpression={"solicitudId": {"$type": "string"}}
+        )
 
     async def guardar(self, registro: RegistroClasificacion) -> RegistroClasificacion:
         resultado = await self._coleccion.insert_one(_a_documento(registro))
@@ -40,10 +44,14 @@ class MongoClasificacionRepository:
         documentos = await cursor.to_list()
         return Pagina([_a_registro(documento) for documento in documentos], page, size, total)
 
+    async def buscar_por_solicitud(self, solicitud_id: UUID) -> RegistroClasificacion | None:
+        documento = await self._coleccion.find_one({"solicitudId": str(solicitud_id)})
+        return _a_registro(documento) if documento else None
+
 
 def _a_documento(registro: RegistroClasificacion) -> dict:
     clasificacion = registro.clasificacion
-    return {
+    documento = {
         "ticketId": str(registro.ticket_id),
         "categoria": clasificacion.categoria.value,
         "urgencia": clasificacion.urgencia.value,
@@ -60,6 +68,9 @@ def _a_documento(registro: RegistroClasificacion) -> dict:
         "respuestaCruda": registro.respuesta_cruda,
         "textoEnmascarado": registro.texto_enmascarado,
     }
+    if registro.solicitud_id:
+        documento["solicitudId"] = str(registro.solicitud_id)
+    return documento
 
 
 def _a_registro(documento: dict) -> RegistroClasificacion:
@@ -82,4 +93,5 @@ def _a_registro(documento: dict) -> RegistroClasificacion:
         fecha=documento["fecha"],
         texto_enmascarado=documento["textoEnmascarado"],
         respuesta_cruda=documento["respuestaCruda"],
+        solicitud_id=UUID(documento["solicitudId"]) if documento.get("solicitudId") else None,
     )

@@ -92,9 +92,11 @@ public class TicketController {
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Crear un ticket",
-            description = "Crea el ticket, lo clasifica con la IA, calcula prioridad y SLA y, si es critico, lo escala. "
-                    + "Si la IA falla o tarda mas de 7 s, el ticket queda PENDIENTE_CLASIFICACION y se responde 201 igual.")
-    @ApiResponse(responseCode = "201", description = "Ticket creado",
+            description = "Con CLASIFICACION_MODO=async (por defecto) responde enseguida en PENDIENTE_CLASIFICACION y "
+                    + "pide la clasificacion por RabbitMQ: la prioridad, el SLA y el escalamiento aparecen cuando "
+                    + "responde la IA (consultar GET /api/tickets/{id}). Con sync (plan B) clasifica por REST dentro de "
+                    + "esta llamada; si la IA falla o tarda mas de 7 s, queda PENDIENTE_CLASIFICACION y responde 201 igual.")
+    @ApiResponse(responseCode = "201", description = "Ticket creado (en async, pendiente de clasificacion)",
             content = @Content(schema = @Schema(implementation = TicketResponse.class)))
     @ApiResponse(responseCode = "400", description = "VALIDACION",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))

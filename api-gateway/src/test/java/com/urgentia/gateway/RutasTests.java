@@ -44,7 +44,9 @@ class RutasTests {
             "/api/tickets/123",
             "/api/clasificaciones",
             "/api/notificaciones/123",
-            "/api/reportes/resumen"
+            "/api/reportes/resumen",
+            "/ws/tickets.wsdl",
+            "/ws/tickets-schema.xsd"
     })
     void ruteaLasRutasDeLaTablaDeContratos(String ruta) {
         cliente.get().uri(ruta).header(HttpHeaders.AUTHORIZATION, bearer()).exchange()
@@ -57,6 +59,13 @@ class RutasTests {
         cliente.post().uri("/api/auth/login").exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class).isEqualTo("/api/auth/login");
+    }
+
+    @Test
+    void ruteaElSoapATicketService() {
+        cliente.post().uri("/ws/tickets").header(HttpHeaders.AUTHORIZATION, bearer()).exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class).isEqualTo("/ws/tickets");
     }
 
     @Test

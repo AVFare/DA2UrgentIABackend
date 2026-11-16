@@ -26,7 +26,7 @@ import org.springframework.web.util.pattern.PathPatternParser;
 import reactor.core.publisher.Mono;
 
 /**
- * Segundo eslabon de la cadena: exige un JWT valido en todo pedido que no sea
+ * Tercer eslabon de la cadena: exige un JWT valido en todo pedido que no sea
  * publico. Si el token es valido, le pasa al servicio destino quien es el
  * usuario (X-User-Id) y que rol tiene (X-User-Rol).
  */
@@ -42,9 +42,11 @@ public class JwtAuthFilter implements WebFilter {
 
     // Rutas publicas de la seccion 6.1 del contexto. Todo lo demas exige token.
     // /webjars/** no esta en el contexto: son los archivos estaticos de Swagger UI.
+    // El WSDL y el XSD del SOAP son publicos para que SoapUI y Postman los importen sin token.
     private static final PathPattern LOGIN = PathPatternParser.defaultInstance.parse("/api/auth/login");
     private static final List<PathPattern> PUBLICAS_GET = Stream.of(
-                    "/health", "/swagger-ui.html", "/swagger-ui/**", "/webjars/**", "/v3/api-docs/**", "/docs/**")
+                    "/health", "/swagger-ui.html", "/swagger-ui/**", "/webjars/**", "/v3/api-docs/**", "/docs/**",
+                    "/ws/tickets.wsdl", "/ws/tickets-schema.xsd")
             .map(PathPatternParser.defaultInstance::parse)
             .toList();
 

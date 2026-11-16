@@ -9,11 +9,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.urgentia.ticket.application.Dobles.ClasificadorFalso;
+import com.urgentia.ticket.application.Dobles.MensajesProcesadosEnMemoria;
 import com.urgentia.ticket.application.Dobles.PublicadorQueGraba;
 import com.urgentia.ticket.application.Dobles.RepositorioEnMemoria;
+import com.urgentia.ticket.application.Dobles.SolicitudesQueGraban;
 import com.urgentia.ticket.application.exception.ClasificacionNoDisponibleException;
 import com.urgentia.ticket.application.exception.DatosInvalidosException;
 import com.urgentia.ticket.application.exception.TicketNoEncontradoException;
+import com.urgentia.ticket.application.port.in.AplicarClasificacionUseCase.ClasificacionRecibida;
+import com.urgentia.ticket.application.port.in.AplicarClasificacionUseCase.Resultado;
 import com.urgentia.ticket.application.port.in.CrearTicketUseCase.CrearTicketCommand;
 import com.urgentia.ticket.application.port.in.Rol;
 import com.urgentia.ticket.application.port.in.UsuarioActual;
@@ -48,8 +52,15 @@ class CasosDeUsoTest {
     private final ClasificadorFalso clasificador = new ClasificadorFalso();
     private final MatrizItilStrategy matriz = new MatrizItilStrategy();
 
+    private final SolicitudesQueGraban solicitudes = new SolicitudesQueGraban(repositorio);
+    private final MensajesProcesadosEnMemoria mensajes = new MensajesProcesadosEnMemoria();
+
     private final CrearTicketService crear = new CrearTicketService(new TicketFactory(reloj), clasificador, matriz,
-            repositorio, publicador, reloj);
+            repositorio, publicador, solicitudes, ModoClasificacion.SINCRONICO, reloj);
+    private final CrearTicketService crearPorLaCola = new CrearTicketService(new TicketFactory(reloj), clasificador,
+            matriz, repositorio, publicador, solicitudes, ModoClasificacion.ASINCRONICO, reloj);
+    private final AplicarClasificacionService aplicar =
+            new AplicarClasificacionService(repositorio, mensajes, matriz, publicador, reloj);
     private final ReclasificarTicketService reclasificar =
             new ReclasificarTicketService(clasificador, matriz, repositorio, publicador, reloj);
     private final AsignarTicketService asignar = new AsignarTicketService(repositorio, publicador, reloj);
@@ -105,6 +116,163 @@ class CasosDeUsoTest {
 
             assertThatThrownBy(() -> crear.crear(DEMO)).hasMessage("base caida");
             assertThat(publicador.publicados).isEmpty();
+        }
+
+        @Test
+        void enModoSyncNoPideNadaPorLaCola() {
+            clasificador.responde(laDeLaDemo().build());
+
+            crear.crear(DEMO);
+
+            assertThat(solicitudes.pedidas).isEmpty();
+            assertThat(clasificador.llamadas).isEqualTo(1);
+        }
+    }
+
+    @Nested
+    class CrearPorLaCola {
+
+        @Test
+        void quedaPendienteYPideLaClasificacionSinLlamarALaIa() {
+            Ticket ticket = crearPorLaCola.crear(DEMO);
+
+            assertThat(ticket.estado()).isEqualTo(EstadoTicket.PENDIENTE_CLASIFICACION);
+            assertThat(ticket.prioridad()).isNull();
+            assertThat(ticket.fechaLimiteSla()).isNull();
+            assertThat(clasificador.llamadas).isZero();
+            assertThat(solicitudes.pedidas).containsExactly(ticket.id());
+            assertThat(solicitudes.descripciones).containsExactly(DEMO.descripcion());
+            assertThat(publicador.tipos()).containsExactly("TicketCreado");
+            // El pedido sale despues de guardar el ticket (y en la misma transaccion, ver el decorator).
+            assertThat(solicitudes.guardadosAlPedir).containsExactly(1);
+        }
+
+        @Test
+        void siFallaElGuardadoNoSePideNada() {
+            repositorio.fallarAlGuardar = new IllegalStateException("base caida");
+
+            assertThatThrownBy(() -> crearPorLaCola.crear(DEMO)).hasMessage("base caida");
+            assertThat(solicitudes.pedidas).isEmpty();
+            assertThat(publicador.publicados).isEmpty();
+        }
+    }
+
+    @Nested
+    class AplicarClasificacionDeLaCola {
+
+        private final UUID mensaje = UUID.fromString("5a7c9e11-2b3d-4c5e-8f60-718293a4b5c6");
+
+        @Test
+        void conClasificacionCriticaQuedaP1YEscaladoComoPorRest() {
+            Ticket pendiente = crearPorLaCola.crear(DEMO);
+            publicador.publicados.clear();
+
+            Resultado resultado = aplicar.aplicar(
+                    ClasificacionRecibida.clasificada(mensaje, pendiente.id(), laDeLaDemo().build()));
+
+            assertThat(resultado).isEqualTo(Resultado.APLICADA);
+            Ticket ticket = repositorio.buscarPorId(pendiente.id()).orElseThrow();
+            assertThat(ticket.estado()).isEqualTo(EstadoTicket.ESCALADO);
+            assertThat(ticket.prioridad()).isEqualTo(Prioridad.P1);
+            assertThat(ticket.motivoEscalamiento()).isEqualTo("Prioridad P1");
+            assertThat(publicador.tipos()).containsExactly("TicketClasificado", "TicketEscalado");
+            assertThat(mensajes.procesados).containsKey(mensaje);
+        }
+
+        @Test
+        void conClasificacionNormalQuedaClasificado() {
+            Ticket pendiente = crearPorLaCola.crear(DEMO);
+
+            aplicar.aplicar(ClasificacionRecibida.clasificada(mensaje, pendiente.id(),
+                    unaClasificacion().con(Urgencia.BAJA, Impacto.BAJO).build()));
+
+            Ticket ticket = repositorio.buscarPorId(pendiente.id()).orElseThrow();
+            assertThat(ticket.estado()).isEqualTo(EstadoTicket.CLASIFICADO);
+            assertThat(ticket.prioridad()).isEqualTo(Prioridad.P4);
+        }
+
+        @Test
+        void unMensajeRepetidoNoDuplicaEfectos() {
+            Ticket pendiente = crearPorLaCola.crear(DEMO);
+            ClasificacionRecibida recibida = ClasificacionRecibida.clasificada(mensaje, pendiente.id(),
+                    laDeLaDemo().build());
+            aplicar.aplicar(recibida);
+            int guardados = repositorio.guardados;
+            int publicados = publicador.publicados.size();
+
+            assertThat(aplicar.aplicar(recibida)).isEqualTo(Resultado.DUPLICADA);
+
+            assertThat(repositorio.guardados).isEqualTo(guardados);
+            assertThat(publicador.publicados).hasSize(publicados);
+        }
+
+        @Test
+        void conErrorDeLaIaElTicketSiguePendienteYSePuedeReclasificar() {
+            Ticket pendiente = crearPorLaCola.crear(DEMO);
+            int guardados = repositorio.guardados;
+
+            Resultado resultado = aplicar.aplicar(
+                    ClasificacionRecibida.conError(mensaje, pendiente.id(), "LLM_TIMEOUT: el modelo no respondio"));
+
+            assertThat(resultado).isEqualTo(Resultado.QUEDA_PENDIENTE);
+            assertThat(repositorio.guardados).isEqualTo(guardados);
+            assertThat(repositorio.buscarPorId(pendiente.id()).orElseThrow().estado())
+                    .isEqualTo(EstadoTicket.PENDIENTE_CLASIFICACION);
+            assertThat(mensajes.procesados).containsKey(mensaje);
+
+            clasificador.responde(laDeLaDemo().build());
+            assertThat(reclasificar.reclasificar(pendiente.id()).estado()).isEqualTo(EstadoTicket.ESCALADO);
+        }
+
+        @Test
+        void siYaSeReclasificoPorRestLaRespuestaTardiaNoLoPisa() {
+            Ticket pendiente = crearPorLaCola.crear(DEMO);
+            clasificador.responde(unaClasificacion().con(Urgencia.BAJA, Impacto.BAJO).build());
+            reclasificar.reclasificar(pendiente.id());
+            publicador.publicados.clear();
+
+            Resultado resultado = aplicar.aplicar(
+                    ClasificacionRecibida.clasificada(mensaje, pendiente.id(), laDeLaDemo().build()));
+
+            assertThat(resultado).isEqualTo(Resultado.IGNORADA);
+            assertThat(repositorio.buscarPorId(pendiente.id()).orElseThrow().prioridad()).isEqualTo(Prioridad.P4);
+            assertThat(publicador.publicados).isEmpty();
+            assertThat(mensajes.procesados).containsKey(mensaje);
+        }
+
+        @Test
+        void siElTicketNoExisteNoHaceNada() {
+            TicketId inexistente = TicketId.de(UUID.randomUUID());
+
+            Resultado resultado = aplicar.aplicar(
+                    ClasificacionRecibida.clasificada(mensaje, inexistente, laDeLaDemo().build()));
+
+            assertThat(resultado).isEqualTo(Resultado.TICKET_INEXISTENTE);
+            assertThat(repositorio.guardados).isZero();
+            assertThat(publicador.publicados).isEmpty();
+        }
+
+        @Test
+        void tieneQueVenirClasificacionOErrorPeroNoLosDos() {
+            TicketId id = TicketId.de(UUID.randomUUID());
+
+            assertThatThrownBy(() -> new ClasificacionRecibida(mensaje, id, null, null))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> new ClasificacionRecibida(mensaje, id, laDeLaDemo().build(), "error"))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Nested
+    class Modo {
+
+        @Test
+        void seLeeDeLaVariableDeEntorno() {
+            assertThat(ModoClasificacion.desde("async")).isEqualTo(ModoClasificacion.ASINCRONICO);
+            assertThat(ModoClasificacion.desde(" SYNC ")).isEqualTo(ModoClasificacion.SINCRONICO);
+            assertThatThrownBy(() -> ModoClasificacion.desde("cola"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("sync o async");
         }
     }
 

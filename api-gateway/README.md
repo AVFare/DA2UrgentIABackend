@@ -45,6 +45,7 @@ Todo se configura por variables de entorno; no hay secretos en el código.
 | `CLASSIFICATION_SERVICE_URL` | No | `http://localhost:8082` | Dónde está classification-service |
 | `NOTIFICATION_SERVICE_URL` | No | `http://localhost:8084` | Dónde está notification-service |
 | `REPORTING_SERVICE_URL` | No | `http://localhost:8085` | Dónde está reporting-service |
+| `CORS_ALLOWED_ORIGINS` | No | `http://localhost:5173` | Orígenes del navegador que pueden llamar al gateway (el front), separados por coma |
 
 Los valores por defecto sirven para correr todo desde el IDE. Dentro de Docker Compose hay
 que definir las cinco URLs con el nombre de cada servicio (por ejemplo
@@ -52,19 +53,21 @@ que definir las cinco URLs con el nombre de cada servicio (por ejemplo
 
 ## Qué pasa con cada pedido
 
-Cada pedido atraviesa tres filtros, siempre en este orden, antes de llegar a un servicio:
+Cada pedido atraviesa cuatro filtros, siempre en este orden, antes de llegar a un servicio:
 
 | Orden | Filtro | Qué hace | Si no pasa |
 |---|---|---|---|
 | 1 | `CorrelationIdFilter` | Asegura que el pedido tenga `X-Correlation-Id` (lo genera si no viene), lo reenvía al servicio y lo devuelve en la respuesta | — |
-| 2 | `JwtAuthFilter` | Exige un JWT válido en todo lo que no sea público. Le pasa al servicio `X-User-Id` y `X-User-Rol`, y borra esos headers si los manda el cliente | 401 `NO_AUTENTICADO` |
-| 3 | `RoleAuthorizationFilter` | Controla que el rol alcance para la operación. Lo que no figura en la tabla de roles se rechaza | 403 `SIN_PERMISO` |
+| 2 | `CorsFilter` | Deja pasar los pedidos del navegador que vienen de un origen de `CORS_ALLOWED_ORIGINS` y responde él mismo el preflight (`OPTIONS`), que no trae token. Agrega los headers de CORS también a los 401 y 403, para que el front pueda leerlos | 403 sin cuerpo, si el origen no está permitido |
+| 3 | `JwtAuthFilter` | Exige un JWT válido en todo lo que no sea público. Le pasa al servicio `X-User-Id` y `X-User-Rol`, y borra esos headers si los manda el cliente | 401 `NO_AUTENTICADO` |
+| 4 | `RoleAuthorizationFilter` | Controla que el rol alcance para la operación. Lo que no figura en la tabla de roles se rechaza | 403 `SIN_PERMISO` |
 
 ### Rutas públicas (no piden token)
 
 - `POST /api/auth/login`
 - `GET /health`
 - `GET /swagger-ui.html`, `/swagger-ui/**`, `/webjars/**`, `/v3/api-docs/**`, `/docs/**`
+- `GET /ws/tickets.wsdl`, `/ws/tickets-schema.xsd` (contrato SOAP, para importarlo en SoapUI o Postman sin token)
 
 ### Tabla de roles
 
@@ -74,10 +77,12 @@ Cada pedido atraviesa tres filtros, siempre en este orden, antes de llegar a un 
 | `GET /api/usuarios/**` | AGENTE, ADMIN |
 | `GET` y `POST /api/tickets`, `GET /api/tickets/{id}` | SOLICITANTE, AGENTE, ADMIN |
 | `PATCH /api/tickets/{id}/asignacion`, `PATCH /api/tickets/{id}/estado`, `POST /api/tickets/{id}/reclasificacion` | AGENTE, ADMIN |
+| `POST /ws/tickets` (SOAP) | SOLICITANTE, AGENTE, ADMIN |
 | `GET` y `POST /api/clasificaciones/**` | ADMIN |
 | `GET /api/notificaciones/**`, `GET /api/reportes/**` | AGENTE, ADMIN |
 
-Que un SOLICITANTE vea solo sus propios tickets lo resuelve ticket-service con `X-User-Id`.
+Que un SOLICITANTE vea solo sus propios tickets lo resuelve ticket-service con `X-User-Id`,
+tanto por REST como por SOAP.
 
 ### A qué servicio va cada ruta
 
@@ -85,6 +90,7 @@ Que un SOLICITANTE vea solo sus propios tickets lo resuelve ticket-service con `
 |---|---|
 | `/api/auth/**`, `/api/usuarios/**` | user-service |
 | `/api/tickets/**` | ticket-service |
+| `/ws/**` | ticket-service (SOAP) |
 | `/api/clasificaciones/**` | classification-service |
 | `/api/notificaciones/**` | notification-service |
 | `/api/reportes/**` | reporting-service |
@@ -125,18 +131,18 @@ Si un log trae una excepción, se agrega el campo `stackTrace`. El formato lo de
 mvn test
 ```
 
-Son 52 tests, casi todos de integración. Levantan el gateway completo y, en lugar de los servicios
+Son 69 tests, casi todos de integración. Levantan el gateway completo y, en lugar de los servicios
 reales, un servicio de mentira (`ServicioFalso`) que registra qué le llegó. Cubren las
-rutas, los tres filtros, los errores 401 y 403, `/health`, el Swagger unificado y el formato de los logs.
+rutas, los cuatro filtros (incluido CORS), los errores 401 y 403, `/health`, el Swagger unificado, la ruta del SOAP y el formato de los logs.
 
 ## Patrones aplicados
 
 ### Chain of Responsibility
 
-- **Dónde:** `filter/CorrelationIdFilter`, `filter/JwtAuthFilter` y
+- **Dónde:** `filter/CorrelationIdFilter`, `filter/CorsFilter`, `filter/JwtAuthFilter` y
   `filter/RoleAuthorizationFilter`. Cada uno implementa `WebFilter` y el orden lo fija `@Order`.
 - **Problema que resuelve:** antes de reenviar un pedido hay que hacer varios controles
-  independientes (trazabilidad, autenticación, autorización). Con un único bloque de código
+  independientes (trazabilidad, CORS, autenticación, autorización). Con un único bloque de código
   esos controles quedarían mezclados y sería difícil sumar o quitar uno.
 - **Cómo se ve en el código:** cada filtro recibe el pedido y decide una de dos cosas: lo
   corta y responde él mismo (por ejemplo, un 401) o se lo pasa al siguiente eslabón con

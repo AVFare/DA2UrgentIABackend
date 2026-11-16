@@ -28,3 +28,7 @@ class ClasificacionRepository(Protocol):
     async def listar(self, ticket_id: UUID | None, page: int, size: int) -> Pagina[RegistroClasificacion]:
         """Registros mas recientes primero; con ticket_id, solo los de ese ticket."""
         ...
+
+    async def buscar_por_solicitud(self, solicitud_id: UUID) -> RegistroClasificacion | None:
+        """El registro que se guardo para esa solicitud, si ya se proceso."""
+        ...

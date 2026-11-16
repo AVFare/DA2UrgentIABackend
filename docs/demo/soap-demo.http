@@ -1,0 +1,114 @@
+# Demo del servicio SOAP: consulta del estado de un ticket.
+# Para la extensión "REST Client" de VS Code (humao.rest-client). Se corre cada pedido con "Send Request".
+#
+# Antes: docker compose up -d --build --wait  (con LLM_PROVIDER=mock, el valor de .env.example)
+# Orden: 0 (WSDL), 1 (login), 2 (crear el ticket crítico, es el mismo de la demo de Swagger) y 3 en adelante.
+#
+# El contrato está en contracts/soap/tickets.wsdl.
+
+@gateway = http://localhost:8080
+
+### 0. El WSDL que se publica (público, sin token)
+GET {{gateway}}/ws/tickets.wsdl
+
+### 1. Login del agente de guardia
+# @name loginAgente
+POST {{gateway}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "guardia@urgentia.local", "password": "Agente123!" }
+
+### 2. Crear el ticket crítico de la demo (lo crea el solicitante)
+# @name loginSolicitante
+POST {{gateway}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "solicitante@urgentia.local", "password": "Usuario123!" }
+
+###
+# @name crearTicket
+POST {{gateway}}/api/tickets
+Content-Type: application/json
+Authorization: Bearer {{loginSolicitante.response.body.accessToken}}
+
+{
+  "titulo": "No puede ingresar nadie",
+  "descripcion": "Producción caída, todos los usuarios bloqueados en el login desde las 9"
+}
+
+### 3. SOAP: consultar el estado de ese mismo ticket
+# Esperado: estado ESCALADO, prioridad P1 y fechaLimiteSla (1 hora después de clasificarlo).
+POST {{gateway}}/ws/tickets
+Content-Type: text/xml; charset=utf-8
+SOAPAction: "http://urgentia.local/ws/tickets/ConsultarEstadoTicket"
+Authorization: Bearer {{loginAgente.response.body.accessToken}}
+X-Correlation-Id: demo-soap-1
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://urgentia.local/ws/tickets">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <t:ConsultarEstadoTicketRequest>
+      <t:ticketId>{{crearTicket.response.body.id}}</t:ticketId>
+    </t:ConsultarEstadoTicketRequest>
+  </soapenv:Body>
+</soapenv:Envelope>
+
+### 4. SOAP Fault: ticket inexistente (código NO_ENCONTRADO, con el mismo correlationId que se mandó)
+POST {{gateway}}/ws/tickets
+Content-Type: text/xml; charset=utf-8
+SOAPAction: "http://urgentia.local/ws/tickets/ConsultarEstadoTicket"
+Authorization: Bearer {{loginAgente.response.body.accessToken}}
+X-Correlation-Id: demo-soap-2
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://urgentia.local/ws/tickets">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <t:ConsultarEstadoTicketRequest>
+      <t:ticketId>7c9e6679-7425-40de-944b-e07fc1f90ae7</t:ticketId>
+    </t:ConsultarEstadoTicketRequest>
+  </soapenv:Body>
+</soapenv:Envelope>
+
+### 5. SOAP Fault: id mal formado (código VALIDACION)
+POST {{gateway}}/ws/tickets
+Content-Type: text/xml; charset=utf-8
+SOAPAction: "http://urgentia.local/ws/tickets/ConsultarEstadoTicket"
+Authorization: Bearer {{loginAgente.response.body.accessToken}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://urgentia.local/ws/tickets">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <t:ConsultarEstadoTicketRequest>
+      <t:ticketId>esto-no-es-un-uuid</t:ticketId>
+    </t:ConsultarEstadoTicketRequest>
+  </soapenv:Body>
+</soapenv:Envelope>
+
+###
+# ---------------------------------------------------------------------------------------------
+# Mientras el gateway no tenga la ruta /ws/**: llamar directo a ticket-service (solo desarrollo).
+# El gateway es quien pone X-User-Id y X-User-Rol; acá se mandan a mano. Sin esos headers no se
+# restringe nada, y con rol SOLICITANTE solo se ven los tickets propios.
+# Se necesita el id de un ticket (el del paso 2 si el REST también va directo al 8081).
+# ---------------------------------------------------------------------------------------------
+
+@ticketService = http://localhost:8081
+
+### D1. WSDL directo
+GET {{ticketService}}/ws/tickets.wsdl
+
+### D2. Consulta directa, como agente
+POST {{ticketService}}/ws/tickets
+Content-Type: text/xml; charset=utf-8
+SOAPAction: "http://urgentia.local/ws/tickets/ConsultarEstadoTicket"
+X-User-Id: b1c2d3e4-0000-4000-8000-000000000002
+X-User-Rol: AGENTE
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://urgentia.local/ws/tickets">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <t:ConsultarEstadoTicketRequest>
+      <t:ticketId>7c9e6679-7425-40de-944b-e07fc1f90ae7</t:ticketId>
+    </t:ConsultarEstadoTicketRequest>
+  </soapenv:Body>
+</soapenv:Envelope>

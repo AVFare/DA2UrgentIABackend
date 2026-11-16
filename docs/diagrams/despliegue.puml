@@ -6,16 +6,18 @@ skinparam defaultTextAlignment center
 skinparam nodesep 40
 skinparam ranksep 55
 
-node "Equipo del cliente" as cliente {
-  artifact "Navegador (Swagger UI)\no cliente HTTP" as navegador
-}
-
 cloud "Internet" as internet {
   node "Proveedor de LLM" as llm
 }
 
-node "Host con Docker" as host {
-  frame "Docker Compose - red urgentia-net" as red {
+node "Host con Docker (la misma maquina que el navegador)" as host {
+  artifact "Navegador\nSPA de React (UrgentIA)" as navegador
+
+  frame "Docker Compose del frontend\n(repo DA2UrgentIAFrontend)" as composefront {
+    node "frontend\nNginx - build de React + Vite + TS\n:80 (publicado en 127.0.0.1:5173)" as fe <<contenedor>>
+  }
+
+  frame "Docker Compose del backend - red urgentia-net" as red {
 
     node "api-gateway\nJava 21 - Spring Cloud Gateway\n:8080" as gw <<contenedor>>
 
@@ -30,6 +32,9 @@ node "Host con Docker" as host {
       database "tickets_db" as ticketsdb
     }
 
+    node "rabbitmq\nRabbitMQ 4 + consola de administracion\n:5672 AMQP - :15672 consola" as rmq <<contenedor>>
+    node "rabbitmq-topologia\ncurlimages/curl - un solo uso" as topo <<contenedor>>
+
     node "mongo\nMongoDB 7\n:27017" as mongo <<contenedor>> {
       database "classification_db" as classdb
       database "notifications_db" as notifdb
@@ -39,11 +44,15 @@ node "Host con Docker" as host {
 
   storage "volumen pgdata" as pgdata
   storage "volumen mongodata" as mongodata
+  storage "volumen rabbitdata" as rabbitdata
 }
 
 us -[hidden]right- ts
 
-navegador --> gw : HTTP + JWT\npuerto 8080 (unico publicado)
+' Nginx solo entrega los archivos estaticos; no hace de proxy hacia el gateway.
+navegador --> fe : HTTP: HTML, JS y CSS\nhttp://localhost:5173
+' La SPA, ya cargada en el navegador, llama al gateway en VITE_API_URL.
+navegador --> gw : HTTP + JWT (fetch con CORS)\nhttp://localhost:8080
 
 ' El gateway rutea por HTTP a los cinco servicios.
 gw --> us : HTTP
@@ -52,10 +61,22 @@ gw --> cs
 gw --> ns
 gw --> rs
 
-' Llamadas entre servicios, sin pasar por el gateway.
-ts -right-> cs : REST\n(timeout 7 s)
-ts ..> ns : eventos\nPOST /api/eventos
-ts ..> rs : eventos\nPOST /api/eventos
+' Llamada directa entre servicios, sin pasar por el gateway: solo para reclasificar
+' y para el plan B (CLASIFICACION_MODO=sync). El alta pide la clasificacion por la cola.
+ts -right-> cs : REST: reclasificacion\ny modo sync (plan B)\n(timeout 7 s)
+
+' Mensajeria: los servicios que producen o consumen mensajes se conectan
+' al broker con RABBITMQ_URL. Las colas las define contracts/messaging/.
+' ticket-service publica los eventos y ClasificacionSolicitada desde el Outbox
+' y consume ClasificacionGenerada; ya no manda eventos por HTTP.
+ts --> rmq : AMQP\n(Outbox)
+cs --> rmq : AMQP
+ns --> rmq : AMQP
+rs --> rmq : AMQP
+
+' Corre en cada up, cuando rabbitmq esta sano, y termina. Los cuatro servicios
+' de arriba arrancan recien cuando termino bien.
+topo --> rmq : carga la topologia\nPOST /api/definitions\n(contracts/messaging/)
 
 ' Cada servicio usa solo su base.
 us --> usersdb
@@ -66,14 +87,25 @@ rs --> repdb
 
 pg ..> pgdata : datos
 mongo ..> mongodata : datos
+rmq ..> rabbitdata : datos
 
 cs -right-> llm : HTTPS
 
 note bottom of host
-  Solo api-gateway publica un puerto hacia afuera.
+  El frontend y el backend son dos Compose separados: el contenedor
+  del frontend no esta en urgentia-net y no habla con el gateway.
+  Nginx sirve el build y es el navegador el que llama al gateway,
+  con la URL fijada al compilar (VITE_API_URL, por defecto
+  http://localhost:8080). El gateway acepta ese origen por
+  CORS_ALLOWED_ORIGINS (por defecto http://localhost:5173).
+  Swagger UI y los clientes HTTP (Postman, newman) tambien
+  entran por el puerto 8080.
+  Del backend, solo api-gateway publica un puerto hacia afuera.
   Los servicios se llaman entre si por su nombre
   (por ejemplo http://ticket-service:8081).
-  En desarrollo, postgres y mongo publican su puerto
-  solo en 127.0.0.1 para usarlos desde el IDE.
+  En desarrollo, postgres, mongo y rabbitmq publican su puerto
+  solo en 127.0.0.1 para usarlos desde el IDE;
+  la consola de RabbitMQ queda en http://localhost:15672.
+  user-service y api-gateway no usan el broker.
 end note
 @enduml

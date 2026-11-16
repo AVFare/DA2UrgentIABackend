@@ -13,12 +13,17 @@ def test_declara_el_esquema_bearer_para_el_boton_authorize(client):
     assert esquema["security"] == [{"bearer": []}]
 
 
-def test_las_consultas_piden_token_y_health_y_eventos_no(client):
+def test_las_consultas_piden_token_y_health_no(client):
     paths = _esquema(client)["paths"]
     assert "security" not in paths["/api/notificaciones"]["get"]
     assert "security" not in paths["/api/notificaciones/{id}"]["get"]
     assert paths["/health"]["get"]["security"] == []
-    assert paths["/api/eventos"]["post"]["security"] == []
+
+
+def test_ya_no_expone_post_api_eventos(client):
+    # Los eventos llegan solo por RabbitMQ (contracts/messaging/).
+    assert "/api/eventos" not in _esquema(client)["paths"]
+    assert client.post("/api/eventos", json={}).status_code in (404, 405)
 
 
 def test_el_primer_servidor_es_el_gateway(client):

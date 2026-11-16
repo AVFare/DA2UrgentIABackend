@@ -23,7 +23,7 @@ import org.springframework.web.util.pattern.PathPatternParser;
 import reactor.core.publisher.Mono;
 
 /**
- * Tercer eslabon de la cadena: controla que el rol del usuario alcance para
+ * Cuarto eslabon de la cadena: controla que el rol del usuario alcance para
  * la operacion pedida, segun la tabla de la seccion 6.1 del contexto.
  * Lo que no figura en la tabla se rechaza.
  */
@@ -42,6 +42,7 @@ public class RoleAuthorizationFilter implements WebFilter {
             regla(Set.of(GET), TODOS, "/api/tickets/{id}"),
             regla(Set.of(PATCH), AGENTE_O_ADMIN, "/api/tickets/{id}/asignacion", "/api/tickets/{id}/estado"),
             regla(Set.of(POST), AGENTE_O_ADMIN, "/api/tickets/{id}/reclasificacion"),
+            regla(Set.of(POST), TODOS, "/ws/tickets"),
             regla(Set.of(GET, POST), SOLO_ADMIN, "/api/clasificaciones", "/api/clasificaciones/**"),
             regla(Set.of(GET), AGENTE_O_ADMIN, "/api/notificaciones", "/api/notificaciones/**"),
             regla(Set.of(GET), AGENTE_O_ADMIN, "/api/reportes", "/api/reportes/**"));

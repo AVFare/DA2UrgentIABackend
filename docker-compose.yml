@@ -40,6 +40,63 @@ services:
       retries: 10
     networks: [urgentia-net]
 
+  rabbitmq:
+    image: rabbitmq:4-management
+    # RabbitMQ guarda los datos bajo el nombre del nodo (rabbit@<hostname>). Con el
+    # hostname fijo, el volumen sigue valiendo cuando se recrea el contenedor.
+    hostname: rabbitmq
+    environment:
+      # El usuario guest solo puede conectarse desde localhost: los servicios usan este.
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "127.0.0.1:5672:5672"     # AMQP, para usarlo desde el IDE
+      - "127.0.0.1:15672:15672"   # consola de administracion
+    volumes:
+      - rabbitdata:/var/lib/rabbitmq
+    healthcheck:
+      # Da "sano" cuando el puerto AMQP ya acepta conexiones, no solo cuando el nodo arranco.
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 10s
+      start_period: 20s
+      retries: 10
+    networks: [urgentia-net]
+
+  # Un solo uso: carga la topologia de contracts/messaging/ (exchanges, colas y bindings)
+  # por la API de administracion y termina. Es idempotente, asi que corre en cada "up".
+  # No se usa load_definitions en rabbitmq.conf: con definiciones al arrancar, RabbitMQ
+  # no crea el usuario de RABBITMQ_USER y nadie se puede conectar.
+  rabbitmq-topologia:
+    image: curlimages/curl:8.17.0
+    command:
+      - "-fsS"
+      - "--retry"
+      - "10"
+      - "--retry-delay"
+      - "2"
+      - "--retry-all-errors"
+      - "-u"
+      - "${RABBITMQ_USER}:${RABBITMQ_PASSWORD}"
+      - "-H"
+      - "content-type: application/json"
+      - "-X"
+      - "POST"
+      - "--data-binary"
+      - "@/definitions.json"
+      - "-o"
+      - "/dev/null"
+      - "-w"
+      - "Topologia cargada: HTTP %{http_code}\n"
+      - "http://rabbitmq:15672/api/definitions"
+    volumes:
+      - ./contracts/messaging/rabbitmq-definitions.json:/definitions.json:ro
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: "no"
+    networks: [urgentia-net]
+
   api-gateway:
     build: ./api-gateway
     ports:
@@ -51,6 +108,7 @@ services:
       CLASSIFICATION_SERVICE_URL: http://classification-service:8082
       NOTIFICATION_SERVICE_URL: http://notification-service:8084
       REPORTING_SERVICE_URL: http://reporting-service:8085
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
       interval: 5s
@@ -83,11 +141,16 @@ services:
       DB_PASSWORD: ${TICKETS_DB_PASSWORD}
       CLASSIFICATION_URL: http://classification-service:8082
       CLASSIFICATION_TIMEOUT_MS: ${CLASSIFICATION_TIMEOUT_MS:-7000}
-      EVENT_SUBSCRIBERS: http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos
+      CLASIFICACION_MODO: ${CLASIFICACION_MODO:-async}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       postgres:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      rabbitmq-topologia:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8081/health"]
       interval: 5s
@@ -104,6 +167,7 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-5000}
       PROMPT_VERSION: ${PROMPT_VERSION:-full}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     # Para LLM_PROVIDER=ollama: llega al Ollama instalado en la maquina (en Linux no existe por defecto).
     extra_hosts:
@@ -111,6 +175,10 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      rabbitmq-topologia:
+        condition: service_completed_successfully
     healthcheck:
       # La imagen python:3.12-slim no trae curl.
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8082/health', timeout=2)"]
@@ -122,10 +190,22 @@ services:
     build: ./notification-service
     environment:
       MONGO_URI: mongodb://notifications_user:${NOTIFICATIONS_DB_PASSWORD}@mongo:27017/notifications_db
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      # Mail: "simulado" por defecto (CI). Con "real" sale por SMTP; la clave va solo en el .env.
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-simulado}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      EMAIL_DESTINO_DEMO: ${EMAIL_DESTINO_DEMO:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       mongo:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      rabbitmq-topologia:
+        condition: service_completed_successfully
     healthcheck:
       # La imagen python:3.12-slim no trae curl.
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8084/health', timeout=2)"]
@@ -137,10 +217,15 @@ services:
     build: ./reporting-service
     environment:
       MONGO_URI: mongodb://reporting_user:${REPORTING_DB_PASSWORD}@mongo:27017/reporting_db
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       mongo:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      rabbitmq-topologia:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:8085/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 5s
@@ -150,6 +235,7 @@ services:
 volumes:
   pgdata:
   mongodata:
+  rabbitdata:
 
 networks:
   urgentia-net:

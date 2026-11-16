@@ -144,6 +144,23 @@ jobs:
       - name: Probar el gateway desde afuera
         run: curl -fsS http://localhost:8080/health
 
+      # user-service da "sano" antes de que DatosSemilla termine de guardar los usuarios.
+      # solicitante se guarda despues de guardia, asi que cuando su login da 200 estan los dos.
+      - name: Esperar a que esten los usuarios semilla
+        if: hashFiles('reporting-service/scripts/verificar-integracion.cjs') != ''
+        run: |
+          for intento in $(seq 1 30); do
+            codigo=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+              -X POST http://localhost:8080/api/auth/login \
+              -H 'Content-Type: application/json' \
+              -d '{"email":"solicitante@urgentia.local","password":"Usuario123!"}' || true)
+            if [ "$codigo" = "200" ]; then echo "Login de solicitante OK (intento $intento)"; exit 0; fi
+            echo "Intento $intento: HTTP $codigo"
+            sleep 1
+          done
+          echo "El login de solicitante no dio 200 en 30 intentos"
+          exit 1
+
       - name: Probar ticket critico, notificacion y reportes por el gateway
         if: hashFiles('reporting-service/scripts/verificar-integracion.cjs') != ''
         run: node reporting-service/scripts/verificar-integracion.cjs
@@ -156,6 +173,79 @@ jobs:
           docker compose exec -T mongo mongosh "mongodb://classification_user:${CLASSIFICATION_DB_PASSWORD}@localhost:27017/classification_db" --quiet --eval "db.runCommand({ping:1})"
           docker compose exec -T mongo mongosh "mongodb://notifications_user:${NOTIFICATIONS_DB_PASSWORD}@localhost:27017/notifications_db" --quiet --eval "db.runCommand({ping:1})"
           docker compose exec -T mongo mongosh "mongodb://reporting_user:${REPORTING_DB_PASSWORD}@localhost:27017/reporting_db" --quiet --eval "db.runCommand({ping:1})"
+
+      - name: Probar que RabbitMQ acepta al usuario y la consola responde
+        run: |
+          set -a; . ./.env; set +a
+          docker compose exec -T rabbitmq rabbitmqctl authenticate_user "$RABBITMQ_USER" "$RABBITMQ_PASSWORD"
+          curl -fsS -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" http://localhost:15672/api/overview > /dev/null
+
+      # rabbitmq-topologia carga contracts/messaging/rabbitmq-definitions.json y termina.
+      # Se comprueba que salio con 0 y que estan todos los exchanges y las colas del contrato.
+      - name: Probar que la topologia de RabbitMQ quedo cargada
+        run: |
+          set -a; . ./.env; set +a
+          docker compose logs rabbitmq-topologia
+          salida=$(docker inspect --format '{{.State.ExitCode}}' "$(docker compose ps -aq rabbitmq-topologia)")
+          if [ "$salida" != "0" ]; then echo "rabbitmq-topologia salio con $salida"; exit 1; fi
+          definiciones=contracts/messaging/rabbitmq-definitions.json
+          api="http://localhost:15672/api"
+          faltan=0
+          for tipo in exchanges queues; do
+            jq -r ".${tipo}[].name" "$definiciones" | sort > "/tmp/${tipo}-esperados.txt"
+            curl -fsS -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" "${api}/${tipo}/%2F" | jq -r '.[].name' | sort > "/tmp/${tipo}-cargados.txt"
+            comm -23 "/tmp/${tipo}-esperados.txt" "/tmp/${tipo}-cargados.txt" > "/tmp/${tipo}-faltan.txt"
+            if [ -s "/tmp/${tipo}-faltan.txt" ]; then echo "Faltan ${tipo}:"; cat "/tmp/${tipo}-faltan.txt"; faltan=1; fi
+            echo "${tipo}: $(wc -l < "/tmp/${tipo}-esperados.txt") del contrato"
+          done
+          exit "$faltan"
+
+      # Contrato de los consumidores: publica a mano un TicketEscalado y un ClasificacionSolicitada por la
+      # API de administracion y verifica que los procesen notification, reporting y classification sin
+      # dejar nada en las DLQ.
+      - name: Probar la mensajeria publicando a mano en RabbitMQ
+        run: node infra/ci/verificar-mensajeria.cjs contrato
+
+      # Camino feliz completo: crea un ticket critico por el gateway y sigue cada mensaje con el
+      # X-Correlation-Id del alta (cola espia temporal): crear, cola, clasificar, escalar, notificar y reportar.
+      - name: Probar punta a punta desde el gateway por RabbitMQ
+        run: node infra/ci/verificar-mensajeria.cjs punta-a-punta
+
+      - name: Mostrar estado y logs si algo fallo
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --tail 200
+
+      - name: Bajar todo
+        if: always()
+        run: docker compose down -v
+
+  # Pruebas de falla de la mensajeria. Van en un job aparte porque frenan consumidores y el broker
+  # y levantan classification-service con otra configuracion: asi no pueden afectar a ningun paso
+  # de "Compose · levanta todo". Corre en paralelo con ese job, sobre un Compose propio.
+  compose-fallas:
+    name: Compose · pruebas de falla de la mensajeria
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          package-manager-cache: false
+
+      - name: Crear el .env a partir del ejemplo
+        run: cp .env.example .env
+
+      - name: Levantar todo y esperar a que este sano
+        run: docker compose up -d --build --wait --wait-timeout 300
+
+      # Mensaje invalido a la DLQ, consumidor caido, broker caido e IA caida, en ese orden.
+      # El login del script ya espera a que esten los usuarios semilla.
+      - name: Probar fallas de la mensajeria
+        run: node infra/ci/verificar-fallas-mensajeria.cjs
 
       - name: Mostrar estado y logs si algo fallo
         if: failure()

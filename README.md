@@ -45,6 +45,7 @@ Todos están en [`docs/diagrams/`](docs/diagrams), como fuente PlantUML (`.puml`
 | Proceso de atención de un ticket (BPMN simplificado) | [`bpmn-atencion-ticket`](docs/diagrams/bpmn-atencion-ticket.png) |
 | Secuencia: crear un ticket crítico | [`secuencia-crear-ticket-critico`](docs/diagrams/secuencia-crear-ticket-critico.png) |
 | Secuencia: IA caída y reclasificación | [`secuencia-ia-caida`](docs/diagrams/secuencia-ia-caida.png) |
+| Secuencia: clasificación por cola de mensajes | [`secuencia-clasificacion-por-cola`](docs/diagrams/secuencia-clasificacion-por-cola.png) |
 | Clases del dominio de tickets | [`clases-ticket`](docs/diagrams/clases-ticket.png) |
 | Estados del ticket | [`estados-ticket`](docs/diagrams/estados-ticket.png) |
 | Capas de ticket-service (hexagonal) | [`capas-ticket-service`](docs/diagrams/capas-ticket-service.png) |
@@ -93,13 +94,15 @@ docker compose up -d --build --wait
 El último comando construye las imágenes, levanta todo y espera a que cada contenedor esté
 sano. La primera vez tarda varios minutos.
 
-El Compose incluye los seis servicios y las dos bases de datos. Las consultas de reportes
+El Compose incluye los seis servicios, las dos bases de datos y RabbitMQ, más `rabbitmq-topologia`,
+que carga las colas del [contrato de mensajería](contracts/messaging/) y termina. Las consultas de reportes
 se acceden por el gateway con un JWT de AGENTE o ADMIN; los eventos de P6 quedan en la red interna.
 
 | Para | Abrir o correr |
 |---|---|
 | Usar la API desde el navegador | http://localhost:8080/swagger-ui.html |
 | Ver que el gateway responde | http://localhost:8080/health |
+| Abrir la consola de RabbitMQ | http://localhost:15672 (usuario y clave de `RABBITMQ_USER` / `RABBITMQ_PASSWORD` en `.env`) |
 | Ver el estado de los contenedores | `docker compose ps` |
 | Ver los logs de un servicio | `docker compose logs api-gateway` |
 | Frenar todo | `docker compose down` |
@@ -108,6 +111,10 @@ se acceden por el gateway con un JWT de AGENTE o ADMIN; los eventos de P6 quedan
 Los valores de `.env.example` sirven para desarrollo. El archivo `.env` no se sube al
 repositorio.
 
+El paso a paso completo para una máquina limpia (requisitos en Windows y Linux, cómo verificar
+cada servicio, cómo resetear y problemas comunes) está en el
+[manual de despliegue](docs/manual-despliegue.md).
+
 ## Demo
 
 Con todo levantado, el flujo de la demo (login, ticket crítico, notificación a la guardia,
@@ -115,10 +122,16 @@ reportes y controles del gateway) se puede correr de cuatro formas:
 
 | Con | Cómo |
    |---|---|
-| Docker (sin instalar nada) | `docker run --rm -v "${PWD}/docs/demo:/etc/newman" postman/newman run urgentia-demo.postman_collection.json --env-var baseUrl=http://host.docker.internal:8080` |
+| Docker (sin instalar nada) | `docker run --rm -v "${PWD}/docs/demo:/etc/newman" postman/newman run urgentia-demo.postman_collection.json --folder "1. Flujo principal" --folder "2. Controles del gateway" --env-var baseUrl=http://host.docker.internal:8080` |
 | Postman | Importar [`docs/demo/urgentia-demo.postman_collection.json`](docs/demo/urgentia-demo.postman_collection.json) y correr las carpetas 1 y 2 |
 | IntelliJ IDEA Ultimate | Abrir [`demo.http`](demo.http) y ejecutar los pedidos en orden |
 | Swagger | Seguir [`docs/demo/demo-swagger.md`](docs/demo/demo-swagger.md) |
+
+## Componente de IA y pruebas de carga
+
+- [Requisitos, decisiones y validación del componente de IA](docs/ia/requisitos-y-decisiones.md):
+  exactitud, latencia y privacidad, con los resultados de la evaluación de 20 casos.
+- [Prueba de carga básica](tests/carga/README.md): cómo correrla con k6 y los resultados.
 
 ## Estructura del repositorio
 

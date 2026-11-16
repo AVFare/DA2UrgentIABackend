@@ -99,9 +99,29 @@ class JwtAuthFilterTests {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/health", "/swagger-ui.html", "/swagger-ui/index.html", "/v3/api-docs/tickets", "/docs/algo"})
+    @ValueSource(strings = {"/health", "/swagger-ui.html", "/swagger-ui/index.html", "/v3/api-docs/tickets", "/docs/algo",
+            "/ws/tickets.wsdl", "/ws/tickets-schema.xsd"})
     void lasRutasPublicasNoExigenToken(String ruta) {
         cliente.get().uri(ruta).exchange()
                 .expectStatus().value(status -> assertThat(status).isNotEqualTo(401));
+    }
+
+    @Test
+    void elSoapExigeToken() {
+        cliente.post().uri("/ws/tickets").exchange()
+                .expectStatus().isUnauthorized();
+    }
+
+    @Test
+    void elSoapRecibeElUsuarioYElRolDelToken() {
+        String token = TokensDePrueba.valido(secreto, "usuario-2", "SOLICITANTE");
+
+        cliente.post().uri("/ws/tickets")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .exchange()
+                .expectStatus().isOk();
+
+        assertThat(servicioFalso.headerRecibido("X-User-Id")).isEqualTo("usuario-2");
+        assertThat(servicioFalso.headerRecibido("X-User-Rol")).isEqualTo("SOLICITANTE");
     }
 }

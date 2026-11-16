@@ -1,0 +1,254 @@
+asyncapi: 3.0.0
+info:
+  title: UrgentIA - Mensajería (RabbitMQ)
+  version: 1.0.0
+  description: |
+    Contrato de la mensajería de la Entrega 2 (contract-first, ADR-09). Define los exchanges, las
+    colas, quién publica y quién consume cada mensaje. La topología importable está en
+    `rabbitmq-definitions.json` y las reglas para productores y consumidores en `README.md`.
+
+    - **Eventos de dominio** del ticket: exchange topic `urgentia.eventos`, routing key = `eventType`.
+      El cuerpo es el mismo sobre de la Entrega 1 (`contracts/events/ticket-events.schema.json`).
+    - **Clasificación asincrónica**: exchange privado `urgentia.clasificacion`, routing key = `eventType`
+      (`ClasificacionSolicitada` y `ClasificacionGenerada`, en `contracts/events/clasificacion-events.schema.json`).
+    - **Dead-letter**: cada cola manda a `urgentia.dlx` lo que se rechaza sin reencolar o lo que agota
+      sus 5 reintentos (`x-delivery-limit`), y queda en `<cola>.dlq`.
+defaultContentType: application/json
+
+servers:
+  compose:
+    host: rabbitmq:5672
+    protocol: amqp
+    protocolVersion: 0-9-1
+    description: RabbitMQ del docker-compose (red interna). Usuario y contraseña desde el .env.
+
+channels:
+  # ---------------------------------------------------------------- exchanges (donde se publica)
+  eventosTicket:
+    address: urgentia.eventos
+    title: Eventos de dominio del ticket
+    description: Exchange topic. Routing key = eventType. Lo publica ticket-service después del commit (Outbox).
+    messages:
+      TicketCreado: { $ref: '#/components/messages/TicketCreado' }
+      TicketClasificado: { $ref: '#/components/messages/TicketClasificado' }
+      TicketEscalado: { $ref: '#/components/messages/TicketEscalado' }
+      TicketAsignado: { $ref: '#/components/messages/TicketAsignado' }
+      TicketEstadoCambiado: { $ref: '#/components/messages/TicketEstadoCambiado' }
+      TicketResuelto: { $ref: '#/components/messages/TicketResuelto' }
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: urgentia.eventos, type: topic, durable: true, autoDelete: false, vhost: / }
+        bindingVersion: 0.3.0
+
+  pedidosClasificacion:
+    address: urgentia.clasificacion
+    title: Pedidos y respuestas de clasificación
+    description: Exchange direct privado. Lleva la descripción del ticket, por eso no se mezcla con los eventos de dominio.
+    messages:
+      ClasificacionSolicitada: { $ref: '#/components/messages/ClasificacionSolicitada' }
+      ClasificacionGenerada: { $ref: '#/components/messages/ClasificacionGenerada' }
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: urgentia.clasificacion, type: direct, durable: true, autoDelete: false, vhost: / }
+        bindingVersion: 0.3.0
+
+  # ---------------------------------------------------------------- colas (de donde se consume)
+  colaNotificaciones:
+    address: notificaciones.eventos
+    title: Cola de notification-service
+    description: Bindings a urgentia.eventos con TicketEscalado, TicketAsignado y TicketResuelto (los que notifican).
+    messages:
+      TicketEscalado: { $ref: '#/components/messages/TicketEscalado' }
+      TicketAsignado: { $ref: '#/components/messages/TicketAsignado' }
+      TicketResuelto: { $ref: '#/components/messages/TicketResuelto' }
+    bindings:
+      amqp:
+        is: queue
+        queue: { name: notificaciones.eventos, durable: true, exclusive: false, autoDelete: false, vhost: / }
+        bindingVersion: 0.3.0
+
+  colaReportes:
+    address: reportes.eventos
+    title: Cola de reporting-service
+    description: Binding a urgentia.eventos con '#' (todos los eventos del ticket).
+    messages:
+      TicketCreado: { $ref: '#/components/messages/TicketCreado' }
+      TicketClasificado: { $ref: '#/components/messages/TicketClasificado' }
+      TicketEscalado: { $ref: '#/components/messages/TicketEscalado' }
+      TicketAsignado: { $ref: '#/components/messages/TicketAsignado' }
+      TicketEstadoCambiado: { $ref: '#/components/messages/TicketEstadoCambiado' }
+      TicketResuelto: { $ref: '#/components/messages/TicketResuelto' }
+    bindings:
+      amqp:
+        is: queue
+        queue: { name: reportes.eventos, durable: true, exclusive: false, autoDelete: false, vhost: / }
+        bindingVersion: 0.3.0
+
+  colaSolicitudesClasificacion:
+    address: clasificacion.solicitudes
+    title: Cola de classification-service
+    description: Binding a urgentia.clasificacion con ClasificacionSolicitada.
+    messages:
+      ClasificacionSolicitada: { $ref: '#/components/messages/ClasificacionSolicitada' }
+    bindings:
+      amqp:
+        is: queue
+        queue: { name: clasificacion.solicitudes, durable: true, exclusive: false, autoDelete: false, vhost: / }
+        bindingVersion: 0.3.0
+
+  colaClasificacionesTicket:
+    address: tickets.clasificaciones
+    title: Cola de ticket-service
+    description: Binding a urgentia.clasificacion con ClasificacionGenerada.
+    messages:
+      ClasificacionGenerada: { $ref: '#/components/messages/ClasificacionGenerada' }
+    bindings:
+      amqp:
+        is: queue
+        queue: { name: tickets.clasificaciones, durable: true, exclusive: false, autoDelete: false, vhost: / }
+        bindingVersion: 0.3.0
+
+operations:
+  publicarEventoTicket:
+    action: send
+    title: ticket-service publica los eventos de dominio
+    description: Desde la tabla outbox, con confirmación del broker (publisher confirms) y routing key = eventType.
+    channel: { $ref: '#/channels/eventosTicket' }
+    messages:
+      - $ref: '#/channels/eventosTicket/messages/TicketCreado'
+      - $ref: '#/channels/eventosTicket/messages/TicketClasificado'
+      - $ref: '#/channels/eventosTicket/messages/TicketEscalado'
+      - $ref: '#/channels/eventosTicket/messages/TicketAsignado'
+      - $ref: '#/channels/eventosTicket/messages/TicketEstadoCambiado'
+      - $ref: '#/channels/eventosTicket/messages/TicketResuelto'
+
+  consumirEventosNotificaciones:
+    action: receive
+    title: notification-service consume los eventos que notifican
+    description: Ack después de procesar e idempotencia por eventId (colección eventos_procesados).
+    channel: { $ref: '#/channels/colaNotificaciones' }
+    messages:
+      - $ref: '#/channels/colaNotificaciones/messages/TicketEscalado'
+      - $ref: '#/channels/colaNotificaciones/messages/TicketAsignado'
+      - $ref: '#/channels/colaNotificaciones/messages/TicketResuelto'
+
+  consumirEventosReportes:
+    action: receive
+    title: reporting-service proyecta todos los eventos
+    description: Ack después de proyectar, idempotencia por eventId y descarte de eventos viejos.
+    channel: { $ref: '#/channels/colaReportes' }
+    messages:
+      - $ref: '#/channels/colaReportes/messages/TicketCreado'
+      - $ref: '#/channels/colaReportes/messages/TicketClasificado'
+      - $ref: '#/channels/colaReportes/messages/TicketEscalado'
+      - $ref: '#/channels/colaReportes/messages/TicketAsignado'
+      - $ref: '#/channels/colaReportes/messages/TicketEstadoCambiado'
+      - $ref: '#/channels/colaReportes/messages/TicketResuelto'
+
+  solicitarClasificacion:
+    action: send
+    title: ticket-service pide la clasificación al crear un ticket
+    channel: { $ref: '#/channels/pedidosClasificacion' }
+    messages:
+      - $ref: '#/channels/pedidosClasificacion/messages/ClasificacionSolicitada'
+
+  consumirSolicitudesClasificacion:
+    action: receive
+    title: classification-service clasifica (worker)
+    description: Ack después de guardar la clasificación; si el LLM falla, responde ClasificacionGenerada con resultado ERROR.
+    channel: { $ref: '#/channels/colaSolicitudesClasificacion' }
+    messages:
+      - $ref: '#/channels/colaSolicitudesClasificacion/messages/ClasificacionSolicitada'
+
+  publicarClasificacionGenerada:
+    action: send
+    title: classification-service responde el resultado
+    channel: { $ref: '#/channels/pedidosClasificacion' }
+    messages:
+      - $ref: '#/channels/pedidosClasificacion/messages/ClasificacionGenerada'
+
+  consumirClasificacionGenerada:
+    action: receive
+    title: ticket-service aplica la clasificación
+    description: Calcula prioridad y SLA, escala si corresponde y emite TicketClasificado (y TicketEscalado). Idempotente por eventId.
+    channel: { $ref: '#/channels/colaClasificacionesTicket' }
+    messages:
+      - $ref: '#/channels/colaClasificacionesTicket/messages/ClasificacionGenerada'
+
+components:
+  messageTraits:
+    sobreUrgentia:
+      contentType: application/json
+      headers:
+        type: object
+        description: Headers AMQP opcionales; la información de ruteo va en las propiedades del mensaje.
+      bindings:
+        amqp:
+          contentEncoding: utf-8
+          deliveryMode: 2
+          bindingVersion: 0.3.0
+
+  messages:
+    TicketCreado:
+      name: TicketCreado
+      title: Ticket creado
+      correlationId: { $ref: '#/components/correlationIds/porCorrelationId' }
+      payload: { $ref: '../events/ticket-events.schema.json' }
+      traits: [{ $ref: '#/components/messageTraits/sobreUrgentia' }]
+      bindings: { amqp: { messageType: TicketCreado, bindingVersion: 0.3.0 } }
+    TicketClasificado:
+      name: TicketClasificado
+      title: Ticket clasificado
+      correlationId: { $ref: '#/components/correlationIds/porCorrelationId' }
+      payload: { $ref: '../events/ticket-events.schema.json' }
+      traits: [{ $ref: '#/components/messageTraits/sobreUrgentia' }]
+      bindings: { amqp: { messageType: TicketClasificado, bindingVersion: 0.3.0 } }
+    TicketEscalado:
+      name: TicketEscalado
+      title: Ticket escalado a la guardia
+      correlationId: { $ref: '#/components/correlationIds/porCorrelationId' }
+      payload: { $ref: '../events/ticket-events.schema.json' }
+      traits: [{ $ref: '#/components/messageTraits/sobreUrgentia' }]
+      bindings: { amqp: { messageType: TicketEscalado, bindingVersion: 0.3.0 } }
+    TicketAsignado:
+      name: TicketAsignado
+      title: Ticket asignado a un agente
+      correlationId: { $ref: '#/components/correlationIds/porCorrelationId' }
+      payload: { $ref: '../events/ticket-events.schema.json' }
+      traits: [{ $ref: '#/components/messageTraits/sobreUrgentia' }]
+      bindings: { amqp: { messageType: TicketAsignado, bindingVersion: 0.3.0 } }
+    TicketEstadoCambiado:
+      name: TicketEstadoCambiado
+      title: Cambio de estado del ticket
+      correlationId: { $ref: '#/components/correlationIds/porCorrelationId' }
+      payload: { $ref: '../events/ticket-events.schema.json' }
+      traits: [{ $ref: '#/components/messageTraits/sobreUrgentia' }]
+      bindings: { amqp: { messageType: TicketEstadoCambiado, bindingVersion: 0.3.0 } }
+    TicketResuelto:
+      name: TicketResuelto
+      title: Ticket resuelto
+      correlationId: { $ref: '#/components/correlationIds/porCorrelationId' }
+      payload: { $ref: '../events/ticket-events.schema.json' }
+      traits: [{ $ref: '#/components/messageTraits/sobreUrgentia' }]
+      bindings: { amqp: { messageType: TicketResuelto, bindingVersion: 0.3.0 } }
+    ClasificacionSolicitada:
+      name: ClasificacionSolicitada
+      title: Pedido de clasificación
+      correlationId: { $ref: '#/components/correlationIds/porCorrelationId' }
+      payload: { $ref: '../events/clasificacion-events.schema.json' }
+      traits: [{ $ref: '#/components/messageTraits/sobreUrgentia' }]
+      bindings: { amqp: { messageType: ClasificacionSolicitada, bindingVersion: 0.3.0 } }
+    ClasificacionGenerada:
+      name: ClasificacionGenerada
+      title: Resultado de la clasificación
+      correlationId: { $ref: '#/components/correlationIds/porCorrelationId' }
+      payload: { $ref: '../events/clasificacion-events.schema.json' }
+      traits: [{ $ref: '#/components/messageTraits/sobreUrgentia' }]
+      bindings: { amqp: { messageType: ClasificacionGenerada, bindingVersion: 0.3.0 } }
+
+  correlationIds:
+    porCorrelationId:
+      description: El X-Correlation-Id del pedido HTTP que originó el mensaje. Va en el sobre y en la propiedad AMQP correlation_id.
+      location: $message.payload#/correlationId

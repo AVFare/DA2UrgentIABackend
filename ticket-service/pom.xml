@@ -22,6 +22,7 @@
         <springdoc.version>2.9.1</springdoc.version>
         <json-schema-validator.version>1.5.6</json-schema-validator.version>
         <jacoco.version>0.8.12</jacoco.version>
+        <jaxb-plugin.version>4.0.8</jaxb-plugin.version>
     </properties>
 
     <dependencies>
@@ -60,6 +61,21 @@
             <version>${springdoc.version}</version>
         </dependency>
 
+        <!-- SOAP (Entrega 2): consulta de estado de tickets. El contrato esta en src/main/resources/soap. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web-services</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>wsdl4j</groupId>
+            <artifactId>wsdl4j</artifactId>
+        </dependency>
+        <!-- Mensajeria con RabbitMQ: publicador del Outbox y consumidor de clasificaciones (ADR-11). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+
         <!-- Tests -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -77,6 +93,17 @@
             <version>${json-schema-validator.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- RabbitMQ real en Docker para los tests de mensajeria. Sin Docker, esos tests se saltean. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>rabbitmq</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -84,6 +111,27 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <!-- Genera las clases del pedido y la respuesta SOAP a partir del XSD (nada generado se commitea). -->
+            <plugin>
+                <groupId>org.jvnet.jaxb</groupId>
+                <artifactId>jaxb-maven-plugin</artifactId>
+                <version>${jaxb-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <schemaDirectory>src/main/resources/soap</schemaDirectory>
+                    <schemaIncludes>
+                        <include>tickets-schema.xsd</include>
+                    </schemaIncludes>
+                    <generatePackage>com.urgentia.ticket.infrastructure.soap.generated</generatePackage>
+                    <episode>false</episode>
+                </configuration>
             </plugin>
             <!-- Cobertura: mvn verify genera target/site/jacoco/index.html y exige 80% en el dominio. -->
             <plugin>

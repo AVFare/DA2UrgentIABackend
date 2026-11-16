@@ -17,6 +17,7 @@ import { EventoDto } from '../src/eventos/dto/evento.dto';
 import { TicketViewRepository } from '../src/proyecciones/ticket-view.repository';
 import { ReportesRepository } from '../src/reportes/reportes.repository';
 import { eventoEjemplo, eventoEscalado } from './fixtures';
+import { RABBITMQ_URL } from '../src/eventos/rabbitmq.config';
 
 describe('reporting-service HTTP + MongoDB standalone', () => {
   let mongo: MongoMemoryServer;
@@ -34,7 +35,10 @@ describe('reporting-service HTTP + MongoDB standalone', () => {
     process.env.MONGO_URI = mongo.getUri('reporting_db');
     const modulo = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(RABBITMQ_URL)
+      .useValue(undefined)
+      .compile();
     app = modulo.createNestApplication({ logger: false });
     configurarHttp(app);
     configurarSwagger(app);

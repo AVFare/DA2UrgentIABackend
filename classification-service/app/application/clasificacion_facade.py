@@ -55,7 +55,8 @@ class ClasificacionFacade:
         self._reloj = reloj
         self._ahora = ahora
 
-    async def clasificar(self, ticket_id: UUID, titulo: str, descripcion: str) -> RegistroClasificacion:
+    async def clasificar(self, ticket_id: UUID, titulo: str, descripcion: str,
+                         solicitud_id: UUID | None = None) -> RegistroClasificacion:
         titulo = enmascarar(titulo)
         descripcion = enmascarar(descripcion)
         pedido = PedidoLlm(titulo, descripcion, armar_prompt(self._plantilla, titulo, descripcion))
@@ -74,6 +75,7 @@ class ClasificacionFacade:
             fecha=self._ahora().replace(microsecond=0),
             texto_enmascarado=f"{titulo}\n{descripcion}",
             respuesta_cruda=enmascarar(respuesta.texto_crudo),
+            solicitud_id=solicitud_id,
         )
         guardado = await self._repositorio.guardar(registro)
         log.info("Ticket %s clasificado con %s/%s en %d ms: %s", ticket_id, guardado.proveedor, guardado.modelo,

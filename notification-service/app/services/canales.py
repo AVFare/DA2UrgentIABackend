@@ -17,7 +17,8 @@ class Canal(ABC):
 
 
 class EmailSimulado(Canal):
-    """En la Defensa 1 no se manda mail real: EmailProvider escribe una linea de log."""
+    """Canal EMAIL_SIMULADO del contrato. EmailProvider decide si el mail sale de verdad (EMAIL_PROVIDER=real)
+    o solo se loguea (simulado, el default)."""
 
     tipo = "EMAIL_SIMULADO"
 
