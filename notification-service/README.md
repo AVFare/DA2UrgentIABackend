@@ -1,7 +1,7 @@
 # notification-service
 
 Consume los eventos de dominio de `ticket-service` y registra notificaciones (email simulado o internas).
-Los eventos llegan por RabbitMQ (cola `notificaciones.eventos`, ver `contracts/messaging/`) y, mientras dure la transición, también por `POST /api/eventos`.
+Los eventos llegan por RabbitMQ (cola `notificaciones.eventos`, ver `contracts/messaging/`); el servicio no tiene un endpoint para recibirlos.
 Dueño: P5. Puerto **8084**. Base MongoDB `notifications_db`.
 Stack: Python 3.12, FastAPI, Pydantic 2 (pydantic-settings) y PyMongo.
 
@@ -9,7 +9,6 @@ Stack: Python 3.12, FastAPI, Pydantic 2 (pydantic-settings) y PyMongo.
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| `POST` | `/api/eventos` | Recibe el sobre de evento (solo red interna). `202` con `PROCESADO`, `DUPLICADO` o `IGNORADO`; `400 VALIDACION` si el sobre no cumple el esquema |
 | `GET` | `/api/notificaciones?ticketId=&destinatario=&page=0&size=20` | Página de notificaciones, de la más nueva a la más vieja |
 | `GET` | `/api/notificaciones/{id}` | Una notificación, o `404 NO_ENCONTRADO` |
 | `GET` | `/health` | `{ "status": "UP", "service": "notification-service", "version": "0.1.0" }` |
@@ -38,7 +37,7 @@ Con `EMAIL_PROVIDER=real`, el servicio no arranca si faltan `SMTP_USER`, `SMTP_P
 
 ### Consumidor de RabbitMQ
 
-Si está `RABBITMQ_URL`, el servicio escucha la cola `notificaciones.eventos` en un hilo propio, junto con la API. Sin esa variable no se levanta y queda solo `POST /api/eventos`.
+Si está `RABBITMQ_URL`, el servicio escucha la cola `notificaciones.eventos` en un hilo propio, junto con la API. Sin esa variable no se levanta y el servicio no recibe eventos (solo atiende las consultas).
 
 | Caso | Respuesta al broker |
 |---|---|
@@ -117,7 +116,7 @@ python scripts/export_openapi.py
 
 | Patrón | Dónde | Problema que resuelve |
 |---|---|---|
-| Observer (consumidor) | Cola `notificaciones.eventos` (`app/consumers/eventos_consumer.py`) y `POST /api/eventos`, más `REGLAS` en `app/services/evento_service.py` | El servicio reacciona a los eventos del ticket sin que `ticket-service` sepa quién notifica ni cómo. Sumar un evento es sumar una entrada en `REGLAS` |
+| Observer (consumidor) | Cola `notificaciones.eventos` (`app/consumers/eventos_consumer.py`), más `REGLAS` en `app/services/evento_service.py` | El servicio reacciona a los eventos del ticket sin que `ticket-service` sepa quién notifica ni cómo. Sumar un evento es sumar una entrada en `REGLAS` |
 | Strategy | `app/services/canales.py` (`Canal`, `EmailSimulado`, `Interna`) y `EMAIL_PROVIDER` en `EmailProvider` | Cambiar o sumar canales, o pasar del mail simulado al real, sin tocar la lógica de eventos |
 | Factory | `app/services/plantillas.py` (`PlantillaFactory`) | Arma asunto y mensaje según el tipo de evento en un solo lugar |
 | Repository | `app/repositories/` (`MongoRepository` y sus hijas) | Solo los repositories conocen Mongo; la lógica común (paginar, buscar por id, convertir `_id`) está una sola vez |

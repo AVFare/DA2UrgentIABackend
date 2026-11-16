@@ -25,36 +25,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/OutputHealth'
       security: []
-  /api/eventos:
-    post:
-      tags:
-      - eventos
-      summary: Recibir Evento
-      description: 'Recibe un evento de ticket-service (solo red interna). Es idempotente
-        por eventId:
-
-        responde PROCESADO, DUPLICADO o IGNORADO.'
-      operationId: recibir_evento_api_eventos_post
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/InputEvento'
-        required: true
-      responses:
-        '202':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OutputEventoRecibido'
-        '400':
-          description: El sobre no cumple el esquema
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OutputError'
-      security: []
   /api/notificaciones:
     get:
       tags:
@@ -156,173 +126,12 @@ components:
       - EMAIL_SIMULADO
       - INTERNA
       title: CanalNotificacion
-    Categoria:
-      type: string
-      enum:
-      - INCIDENTE
-      - SOLICITUD
-      - CONSULTA
-      - BUG
-      title: Categoria
     EstadoNotificacion:
       type: string
       enum:
       - ENVIADA
       - FALLIDA
       title: EstadoNotificacion
-    EstadoTicket:
-      type: string
-      enum:
-      - NUEVO
-      - PENDIENTE_CLASIFICACION
-      - CLASIFICADO
-      - ASIGNADO
-      - EN_CURSO
-      - ESCALADO
-      - RESUELTO
-      - CERRADO
-      title: EstadoTicket
-    InputEvento:
-      properties:
-        eventId:
-          type: string
-          format: uuid
-          title: Eventid
-        eventType:
-          $ref: '#/components/schemas/TipoEvento'
-        version:
-          type: integer
-          minimum: 1.0
-          title: Version
-        occurredAt:
-          type: string
-          format: date-time
-          title: Occurredat
-        correlationId:
-          type: string
-          minLength: 1
-          title: Correlationid
-        source:
-          type: string
-          minLength: 1
-          title: Source
-        payload:
-          $ref: '#/components/schemas/InputPayload'
-      type: object
-      required:
-      - eventId
-      - eventType
-      - version
-      - occurredAt
-      - correlationId
-      - source
-      - payload
-      title: InputEvento
-      description: Sobre del evento. Un eventType fuera del enum responde 400, como
-        pide el contrato.
-      examples:
-      - correlationId: a8e1b2c3-0000-4000-8000-000000000001
-        eventId: 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
-        eventType: TicketEscalado
-        occurredAt: '2026-10-05T14:03:12Z'
-        payload:
-          estadoAnterior: CLASIFICADO
-          motivo: Prioridad P1
-          ticket:
-            categoria: INCIDENTE
-            estado: ESCALADO
-            fechaCreacion: '2026-10-05T14:03:10Z'
-            fechaLimiteSla: '2026-10-05T15:03:11Z'
-            moduloAfectado: AUTENTICACION
-            prioridad: P1
-            solicitanteId: b1c2d3e4-0000-4000-8000-000000000004
-            ticketId: 7c9e6679-7425-40de-944b-e07fc1f90ae7
-            titulo: No puede ingresar nadie
-        source: ticket-service
-        version: 1
-    InputPayload:
-      properties:
-        ticket:
-          $ref: '#/components/schemas/InputTicket'
-        estadoAnterior:
-          anyOf:
-          - $ref: '#/components/schemas/EstadoTicket'
-          - type: 'null'
-        motivo:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Motivo
-      type: object
-      required:
-      - ticket
-      title: InputPayload
-    InputTicket:
-      properties:
-        ticketId:
-          type: string
-          format: uuid
-          title: Ticketid
-        titulo:
-          type: string
-          maxLength: 120
-          minLength: 5
-          title: Titulo
-        estado:
-          $ref: '#/components/schemas/EstadoTicket'
-        prioridad:
-          anyOf:
-          - $ref: '#/components/schemas/Prioridad'
-          - type: 'null'
-        categoria:
-          anyOf:
-          - $ref: '#/components/schemas/Categoria'
-          - type: 'null'
-        moduloAfectado:
-          anyOf:
-          - $ref: '#/components/schemas/ModuloAfectado'
-          - type: 'null'
-        solicitanteId:
-          type: string
-          format: uuid
-          title: Solicitanteid
-        agenteAsignadoId:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
-          title: Agenteasignadoid
-        fechaCreacion:
-          type: string
-          format: date-time
-          title: Fechacreacion
-        fechaLimiteSla:
-          anyOf:
-          - type: string
-            format: date-time
-          - type: 'null'
-          title: Fechalimitesla
-      type: object
-      required:
-      - ticketId
-      - titulo
-      - estado
-      - solicitanteId
-      - fechaCreacion
-      title: InputTicket
-      description: Foto del ticket despues del cambio. No trae la descripcion.
-    ModuloAfectado:
-      type: string
-      enum:
-      - AUTENTICACION
-      - FACTURACION
-      - PAGOS
-      - REPORTES
-      - INFRAESTRUCTURA
-      - BASE_DE_DATOS
-      - INTEGRACIONES
-      - OTRO
-      title: ModuloAfectado
     OutputDetalleError:
       properties:
         campo:
@@ -368,7 +177,7 @@ components:
           type: string
           title: Path
           examples:
-          - /api/eventos
+          - /api/notificaciones
         correlationId:
           anyOf:
           - type: string
@@ -383,21 +192,6 @@ components:
       - timestamp
       - path
       title: OutputError
-    OutputEventoRecibido:
-      properties:
-        eventId:
-          type: string
-          format: uuid
-          title: Eventid
-          examples:
-          - 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
-        resultado:
-          $ref: '#/components/schemas/ResultadoEvento'
-      type: object
-      required:
-      - eventId
-      - resultado
-      title: OutputEventoRecibido
     OutputHealth:
       properties:
         status:
@@ -512,21 +306,6 @@ components:
       - totalElements
       - totalPages
       title: OutputPagination[OutputNotificacion]
-    Prioridad:
-      type: string
-      enum:
-      - P1
-      - P2
-      - P3
-      - P4
-      title: Prioridad
-    ResultadoEvento:
-      type: string
-      enum:
-      - PROCESADO
-      - DUPLICADO
-      - IGNORADO
-      title: ResultadoEvento
     TipoEvento:
       type: string
       enum:

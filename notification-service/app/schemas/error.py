@@ -15,5 +15,5 @@ class OutputError(CamelModel):
     mensaje: str = Field(examples=["La solicitud no es válida"])
     detalles: list[OutputDetalleError] | None = None
     timestamp: str = Field(examples=["2026-10-05T14:03:11Z"])
-    path: str = Field(examples=["/api/eventos"])
+    path: str = Field(examples=["/api/notificaciones"])
     correlation_id: str | None = Field(default=None, examples=["a8e1b2c3-0000-4000-8000-000000000001"])

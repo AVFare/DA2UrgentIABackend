@@ -1,4 +1,5 @@
 import copy
+import json
 import uuid
 
 import mongomock
@@ -39,6 +40,13 @@ def sobre(event_type: str = "TicketEscalado", **ticket) -> dict:
     return datos
 
 
+def recibir(db, datos: dict) -> None:
+    """Hace llegar un sobre como lo hace RabbitMQ: por el consumidor."""
+    from app.consumers.eventos_consumer import Decision, procesar_mensaje
+
+    assert procesar_mensaje(json.dumps(datos).encode(), db) is Decision.ACK
+
+
 def evento(event_type: str = "TicketEscalado", **ticket) -> dict:
-    """El dict que el endpoint le pasa a los services."""
+    """El dict que el consumidor le pasa a los services."""
     return InputEvento.model_validate(sobre(event_type, **ticket)).model_dump(mode="json", by_alias=True)

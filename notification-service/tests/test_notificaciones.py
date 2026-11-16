@@ -1,17 +1,17 @@
-from tests.conftest import sobre
+from tests.conftest import recibir, sobre
 
 AGENTE = "b1c2d3e4-0000-4000-8000-000000000002"
 
 
-def _cargar_tres(client):
-    client.post("/api/eventos", json=sobre("TicketEscalado"))
-    client.post("/api/eventos", json=sobre("TicketAsignado", estado="ASIGNADO", agenteAsignadoId=AGENTE))
-    client.post("/api/eventos", json=sobre("TicketResuelto", estado="RESUELTO", agenteAsignadoId=AGENTE))
+def _cargar_tres(mongo):
+    recibir(mongo, sobre("TicketEscalado"))
+    recibir(mongo, sobre("TicketAsignado", estado="ASIGNADO", agenteAsignadoId=AGENTE))
+    recibir(mongo, sobre("TicketResuelto", estado="RESUELTO", agenteAsignadoId=AGENTE))
 
 
-def test_consulta_la_notificacion_registrada(client):
+def test_consulta_la_notificacion_registrada(client, mongo):
     evento = sobre("TicketEscalado")
-    client.post("/api/eventos", json=evento)
+    recibir(mongo, evento)
 
     pagina = client.get("/api/notificaciones", params={"ticketId": evento["payload"]["ticket"]["ticketId"]}).json()
 
@@ -25,8 +25,8 @@ def test_consulta_la_notificacion_registrada(client):
     assert client.get(f"/api/notificaciones/{n['id']}").json() == n
 
 
-def test_filtros_y_paginacion(client):
-    _cargar_tres(client)
+def test_filtros_y_paginacion(client, mongo):
+    _cargar_tres(mongo)
 
     primera = client.get("/api/notificaciones", params={"size": 2}).json()
     assert (primera["totalElements"], primera["totalPages"], len(primera["content"])) == (3, 2, 2)
@@ -47,10 +47,16 @@ def test_sin_notificaciones_devuelve_una_pagina_vacia(client):
     }
 
 
-def test_paginacion_invalida_responde_400(client):
-    r = client.get("/api/notificaciones", params={"size": 101})
+def test_paginacion_invalida_responde_400_con_formato_comun(client):
+    r = client.get("/api/notificaciones", params={"size": 101}, headers={"X-Correlation-Id": "corr-400"})
     assert r.status_code == 400
-    assert r.json()["detalles"][0]["campo"] == "size"
+    cuerpo = r.json()
+    assert (cuerpo["codigo"], cuerpo["path"], cuerpo["correlationId"]) == (
+        "VALIDACION",
+        "/api/notificaciones",
+        "corr-400",
+    )
+    assert cuerpo["detalles"][0]["campo"] == "size"
 
 
 def test_ticket_id_invalido_responde_400(client):

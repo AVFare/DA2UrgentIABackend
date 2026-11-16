@@ -10,7 +10,6 @@ from app.schemas.enums import (
     EstadoTicket,
     ModuloAfectado,
     Prioridad,
-    ResultadoEvento,
     TipoEvento,
 )
 
@@ -73,8 +72,3 @@ class InputEvento(CamelModel):
     correlation_id: str = Field(min_length=1)
     source: str = Field(min_length=1)
     payload: InputPayload
-
-
-class OutputEventoRecibido(CamelModel):
-    event_id: UUID = Field(examples=["3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"])
-    resultado: ResultadoEvento
