@@ -214,3 +214,39 @@ jobs:
       - name: Bajar todo
         if: always()
         run: docker compose down -v
+
+  # Pruebas de falla de la mensajeria. Van en un job aparte porque frenan consumidores y el broker
+  # y levantan classification-service con otra configuracion: asi no pueden afectar a ningun paso
+  # de "Compose · levanta todo". Corre en paralelo con ese job, sobre un Compose propio.
+  compose-fallas:
+    name: Compose · pruebas de falla de la mensajeria
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          package-manager-cache: false
+
+      - name: Crear el .env a partir del ejemplo
+        run: cp .env.example .env
+
+      - name: Levantar todo y esperar a que este sano
+        run: docker compose up -d --build --wait --wait-timeout 300
+
+      # Mensaje invalido a la DLQ, consumidor caido, broker caido e IA caida, en ese orden.
+      # El login del script ya espera a que esten los usuarios semilla.
+      - name: Probar fallas de la mensajeria
+        run: node infra/ci/verificar-fallas-mensajeria.cjs
+
+      - name: Mostrar estado y logs si algo fallo
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --tail 200
+
+      - name: Bajar todo
+        if: always()
+        run: docker compose down -v
