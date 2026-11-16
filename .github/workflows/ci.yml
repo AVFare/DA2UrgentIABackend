@@ -200,10 +200,52 @@ jobs:
           done
           exit "$faltan"
 
-      # Publica a mano un TicketEscalado y un ClasificacionSolicitada por la API de administracion y
-      # verifica que los procesen notification, reporting y classification sin dejar nada en las DLQ.
+      # Contrato de los consumidores: publica a mano un TicketEscalado y un ClasificacionSolicitada por la
+      # API de administracion y verifica que los procesen notification, reporting y classification sin
+      # dejar nada en las DLQ.
       - name: Probar la mensajeria publicando a mano en RabbitMQ
-        run: node infra/ci/verificar-mensajeria.cjs
+        run: node infra/ci/verificar-mensajeria.cjs contrato
+
+      # Camino feliz completo: crea un ticket critico por el gateway y sigue cada mensaje con el
+      # X-Correlation-Id del alta (cola espia temporal): crear, cola, clasificar, escalar, notificar y reportar.
+      - name: Probar punta a punta desde el gateway por RabbitMQ
+        run: node infra/ci/verificar-mensajeria.cjs punta-a-punta
+
+      - name: Mostrar estado y logs si algo fallo
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --tail 200
+
+      - name: Bajar todo
+        if: always()
+        run: docker compose down -v
+
+  # Pruebas de falla de la mensajeria. Van en un job aparte porque frenan consumidores y el broker
+  # y levantan classification-service con otra configuracion: asi no pueden afectar a ningun paso
+  # de "Compose · levanta todo". Corre en paralelo con ese job, sobre un Compose propio.
+  compose-fallas:
+    name: Compose · pruebas de falla de la mensajeria
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          package-manager-cache: false
+
+      - name: Crear el .env a partir del ejemplo
+        run: cp .env.example .env
+
+      - name: Levantar todo y esperar a que este sano
+        run: docker compose up -d --build --wait --wait-timeout 300
+
+      # Mensaje invalido a la DLQ, consumidor caido, broker caido e IA caida, en ese orden.
+      # El login del script ya espera a que esten los usuarios semilla.
+      - name: Probar fallas de la mensajeria
+        run: node infra/ci/verificar-fallas-mensajeria.cjs
 
       - name: Mostrar estado y logs si algo fallo
         if: failure()
