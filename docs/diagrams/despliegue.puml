@@ -61,16 +61,15 @@ gw --> cs
 gw --> ns
 gw --> rs
 
-' Llamadas entre servicios, sin pasar por el gateway.
-ts -right-> cs : REST\n(timeout 7 s)
-ts ..> ns : eventos\nPOST /api/eventos
-ts ..> rs : eventos\nPOST /api/eventos
+' Llamada directa entre servicios, sin pasar por el gateway: solo para reclasificar
+' y para el plan B (CLASIFICACION_MODO=sync). El alta pide la clasificacion por la cola.
+ts -right-> cs : REST: reclasificacion\ny modo sync (plan B)\n(timeout 7 s)
 
-'' Mensajeria: los servicios que producen o consumen mensajes se conectan
+' Mensajeria: los servicios que producen o consumen mensajes se conectan
 ' al broker con RABBITMQ_URL. Las colas las define contracts/messaging/.
-' ticket-service ya recibe RABBITMQ_URL, pero todavia no tiene codigo AMQP:
-' la flecha gris queda como pendiente hasta que se sume.
-ts -[#888888,dashed]-> rmq : AMQP\n(pendiente)
+' ticket-service publica los eventos y ClasificacionSolicitada desde el Outbox
+' y consume ClasificacionGenerada; ya no manda eventos por HTTP.
+ts --> rmq : AMQP\n(Outbox)
 cs --> rmq : AMQP
 ns --> rmq : AMQP
 rs --> rmq : AMQP
