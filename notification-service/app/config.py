@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     service_version: str = "0.1.0"
 
-    # RabbitMQ (contracts/messaging/). Sin URL no se levanta el consumidor: queda solo POST /api/eventos.
+    # RabbitMQ (contracts/messaging/): es la unica entrada de eventos. Sin URL no se levanta el
+    # consumidor (los tests no la usan).
     rabbitmq_url: str | None = None
     rabbitmq_cola: str = "notificaciones.eventos"
     rabbitmq_prefetch: int = 10

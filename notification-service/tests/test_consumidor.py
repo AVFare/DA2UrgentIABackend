@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.consumers.eventos_consumer import ConsumidorEventos, Decision, procesar_mensaje
+from app.logging_config import JsonFormatter
 from app.repositories.notificacion_repository import NotificacionRepository
 from tests.conftest import sobre
 
@@ -13,11 +14,20 @@ def _cuerpo(datos: dict) -> bytes:
     return json.dumps(datos).encode()
 
 
-def test_mensaje_valido_se_procesa_y_se_confirma(mongo):
+def test_escalado_registra_una_notificacion_a_la_guardia(mongo, caplog):
+    caplog.set_level("INFO")
     evento = sobre("TicketEscalado")
 
     assert procesar_mensaje(_cuerpo(evento), mongo) is Decision.ACK
-    assert mongo.notificaciones.find_one()["destinatario"] == "GRUPO:GUARDIA"
+
+    guardada = mongo.notificaciones.find_one()
+    assert guardada["destinatario"] == "GRUPO:GUARDIA"
+    assert guardada["canal"] == "EMAIL_SIMULADO"
+    assert guardada["estado"] == "ENVIADA"
+    assert guardada["asunto"] == "[P1] Ticket escalado: No puede ingresar nadie"
+    # El email simulado se loguea con el correlationId del sobre.
+    log = next(json.loads(JsonFormatter().format(r)) for r in caplog.records if r.name == "providers.email")
+    assert log["correlationId"] == evento["correlationId"]
 
 
 def test_mensaje_repetido_se_confirma_sin_duplicar(mongo):

@@ -1,6 +1,6 @@
 """Consumidor de RabbitMQ de la cola notificaciones.eventos (contracts/messaging/).
 
-Es una entrada mas, como el endpoint POST /api/eventos: valida el sobre con el mismo schema y
+Es la entrada de los eventos de ticket-service: valida el sobre con el schema del contrato y
 delega en EventoService. Sigue las reglas del contrato:
 - ack recien despues de procesar (la notificacion ya quedo guardada);
 - mensaje invalido: reject sin reencolar, va directo a la dead-letter;
