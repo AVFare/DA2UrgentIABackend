@@ -1,6 +1,7 @@
 // Prueba de carga basica de UrgentIA con k6. Como correrla: ver README.md de esta carpeta.
 //
-// MODO=gateway  crea tickets por el api-gateway (POST /api/tickets), como un solicitante.
+// MODO=gateway  crea tickets por el api-gateway (POST /api/tickets), como un solicitante, y mide cuánto tarda
+//               en llegar la clasificación que se pide por la cola.
 // MODO=cola     publica ClasificacionSolicitada en RabbitMQ y mide como la procesa classification-service.
 //
 // En los dos modos se muestrea una vez por segundo el tamaño de las colas de clasificacion.
@@ -21,8 +22,13 @@ const CLAVE_RABBITMQ = __ENV.RABBITMQ_PASSWORD || 'rabbit_pass';
 const EXCHANGE = 'urgentia.clasificacion';
 const COLA_SOLICITUDES = 'clasificacion.solicitudes';
 const COLA_MUERTOS = 'clasificacion.solicitudes.dlq';
+const COLA_CLASIFICACIONES = 'tickets.clasificaciones';
+const COLA_CLASIFICACIONES_MUERTOS = 'tickets.clasificaciones.dlq';
 const COLA_RESPUESTAS = 'carga.respuestas';
 const ESPERA_MAXIMA_VACIADO_S = 120;
+// Uno de cada MUESTRA tickets se consulta hasta que aparece clasificado, como hace el frontend.
+const MUESTRA = Number(__ENV.MUESTRA || 10);
+const ESPERA_MAXIMA_CLASIFICACION_S = 30;
 
 const TICKETS = [
   ['No puede ingresar nadie', 'Producción caída, todos los usuarios bloqueados en el login desde las 9'],
@@ -34,8 +40,10 @@ const TICKETS = [
 
 const solicitudesEnCola = new Trend('cola_solicitudes_mensajes');
 const mensajesMuertos = new Trend('cola_muertos_mensajes');
-const ticketsClasificados = new Counter('tickets_clasificados');
-const ticketsPendientes = new Counter('tickets_pendientes_de_clasificacion');
+const clasificacionesEnCola = new Trend('cola_clasificaciones_mensajes');
+const ticketsCreados = new Counter('tickets_creados');
+const segundosHastaClasificar = new Trend('ticket_segundos_hasta_clasificar');
+const ticketsSinClasificar = new Counter('tickets_sin_clasificar_en_la_muestra');
 const segundosDeVaciado = new Trend('cola_segundos_hasta_vaciarse');
 
 export const options = {
@@ -63,8 +71,10 @@ export const options = {
     },
   },
   thresholds: {
-    // RNF02: crear un ticket con clasificacion responde en menos de 8 s.
+    // RNF02: crear un ticket responde en menos de 8 s.
     'http_req_duration{operacion:crear_ticket}': ['p(95)<8000'],
+    // Ningun ticket de la muestra se queda sin clasificar.
+    tickets_sin_clasificar_en_la_muestra: ['count==0'],
     'http_req_failed{operacion:crear_ticket}': ['rate<0.01'],
     'http_req_failed{operacion:publicar_solicitud}': ['rate<0.01'],
   },
@@ -96,38 +106,71 @@ function uuid() {
 }
 
 export function setup() {
-  const datos = { muertosAlEmpezar: mensajesEn(COLA_MUERTOS) };
+  const datos = {
+    muertosAlEmpezar: mensajesEn(COLA_MUERTOS),
+    clasificacionesMuertasAlEmpezar: mensajesEn(COLA_CLASIFICACIONES_MUERTOS),
+  };
   if (MODO === 'cola') {
     // Alguien tiene que recibir las respuestas: sin una cola enlazada, las solicitudes no se confirman.
     rabbitmq('PUT', `/queues/%2F/${COLA_RESPUESTAS}`, { durable: true, arguments: { 'x-queue-type': 'quorum' } });
     rabbitmq('POST', `/bindings/%2F/e/${EXCHANGE}/q/${COLA_RESPUESTAS}`, { routing_key: 'ClasificacionGenerada' });
     return datos;
   }
-  const login = http.post(
-    `${GATEWAY}/api/auth/login`,
-    JSON.stringify({ email: 'solicitante@urgentia.local', password: 'Usuario123!' }),
-    { headers: { 'Content-Type': 'application/json' }, tags: { operacion: 'login' } },
-  );
-  if (login.status !== 200) {
-    throw new Error(`No se pudo iniciar sesion: HTTP ${login.status}`);
-  }
-  datos.token = login.json('accessToken');
+  datos.token = iniciarSesion('solicitante@urgentia.local', 'Usuario123!');
+  datos.tokenAdmin = iniciarSesion('admin@urgentia.local', 'Admin123!');
+  datos.pendientesAlEmpezar = ticketsPendientesDeClasificacion(datos.tokenAdmin);
   return datos;
+}
+
+function iniciarSesion(email, password) {
+  const login = http.post(`${GATEWAY}/api/auth/login`, JSON.stringify({ email, password }), {
+    headers: { 'Content-Type': 'application/json' },
+    tags: { operacion: 'login' },
+  });
+  if (login.status !== 200) {
+    throw new Error(`No se pudo iniciar sesion como ${email}: HTTP ${login.status}`);
+  }
+  return login.json('accessToken');
+}
+
+function ticketsPendientesDeClasificacion(token) {
+  const respuesta = http.get(`${GATEWAY}/api/tickets?estado=PENDIENTE_CLASIFICACION&size=1`, {
+    headers: { Authorization: `Bearer ${token}` },
+    tags: { operacion: 'administracion' },
+  });
+  return respuesta.status === 200 ? respuesta.json('totalElements') : -1;
+}
+
+function esperarClasificacion(id, token, inicio) {
+  const limite = inicio + ESPERA_MAXIMA_CLASIFICACION_S * 1000;
+  while (Date.now() < limite) {
+    sleep(0.2);
+    const ticket = http.get(`${GATEWAY}/api/tickets/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      tags: { operacion: 'consultar_ticket' },
+    });
+    if (ticket.status === 200 && ticket.json('estado') !== 'PENDIENTE_CLASIFICACION') {
+      segundosHastaClasificar.add((Date.now() - inicio) / 1000);
+      return;
+    }
+  }
+  ticketsSinClasificar.add(1);
 }
 
 export function crearTicket(datos) {
   const [titulo, descripcion] = TICKETS[Math.floor(Math.random() * TICKETS.length)];
+  const inicio = Date.now();
   const respuesta = http.post(`${GATEWAY}/api/tickets`, JSON.stringify({ titulo, descripcion }), {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${datos.token}` },
     tags: { operacion: 'crear_ticket' },
   });
   check(respuesta, { 'el ticket se crea (201)': (r) => r.status === 201 });
-  if (respuesta.status === 201) {
-    if (respuesta.json('estado') === 'PENDIENTE_CLASIFICACION') {
-      ticketsPendientes.add(1);
-    } else {
-      ticketsClasificados.add(1);
-    }
+  if (respuesta.status !== 201) {
+    return;
+  }
+  ticketsCreados.add(1);
+  if (Math.random() * MUESTRA < 1) {
+    esperarClasificacion(respuesta.json('id'), datos.token, inicio);
   }
 }
 
@@ -159,22 +202,30 @@ export function publicarSolicitud() {
 export function muestrearColas() {
   solicitudesEnCola.add(mensajesEn(COLA_SOLICITUDES));
   mensajesMuertos.add(mensajesEn(COLA_MUERTOS));
+  clasificacionesEnCola.add(mensajesEn(COLA_CLASIFICACIONES));
 }
 
 export function teardown(datos) {
   let segundos = 0;
-  while (mensajesEn(COLA_SOLICITUDES) > 0 && segundos < ESPERA_MAXIMA_VACIADO_S) {
+  while ((mensajesEn(COLA_SOLICITUDES) > 0 || mensajesEn(COLA_CLASIFICACIONES) > 0)
+         && segundos < ESPERA_MAXIMA_VACIADO_S) {
     sleep(1);
     segundos += 1;
   }
   segundosDeVaciado.add(segundos);
 
   const muertos = mensajesEn(COLA_MUERTOS) - datos.muertosAlEmpezar;
+  const clasificacionesMuertas = mensajesEn(COLA_CLASIFICACIONES_MUERTOS) - datos.clasificacionesMuertasAlEmpezar;
   if (MODO === 'cola') {
     const respuestas = mensajesEn(COLA_RESPUESTAS);
     rabbitmq('DELETE', `/queues/%2F/${COLA_RESPUESTAS}`);
     console.log(`Respuestas ClasificacionGenerada recibidas: ${respuestas}`);
+  } else {
+    // Las colas ya estan vacias: todo lo que se pudo clasificar ya se aplico.
+    const pendientes = ticketsPendientesDeClasificacion(datos.tokenAdmin) - datos.pendientesAlEmpezar;
+    console.log(`Tickets de la prueba que quedaron en PENDIENTE_CLASIFICACION: ${pendientes}`);
   }
   console.log(`Solicitudes que terminaron en la cola de mensajes muertos durante la prueba: ${muertos}`);
-  console.log(`Segundos hasta que la cola de solicitudes quedo vacia despues de la carga: ${segundos}`);
+  console.log(`Clasificaciones que terminaron en la cola de mensajes muertos durante la prueba: ${clasificacionesMuertas}`);
+  console.log(`Segundos hasta que las colas de clasificacion quedaron vacias despues de la carga: ${segundos}`);
 }

@@ -5,11 +5,16 @@ Mide cómo responde el sistema bajo carga con [k6](https://k6.io). Se corre con
 
 | Modo | Qué hace | Qué mide |
 |---|---|---|
-| `gateway` | Crea tickets por el api-gateway (`POST /api/tickets`), como un solicitante | Tiempo de respuesta y errores de punta a punta |
+| `gateway` | Crea tickets por el api-gateway (`POST /api/tickets`), como un solicitante | Tiempo de respuesta del alta, cuánto tarda en llegar la clasificación y si algún ticket queda sin clasificar |
 | `cola` | Publica `ClasificacionSolicitada` en RabbitMQ | Cuánto se acumula la cola de clasificación y cuánto tarda en vaciarse |
 
-En los dos modos se muestrea una vez por segundo el tamaño de `clasificacion.solicitudes` y de
-su cola de mensajes muertos.
+En los dos modos se muestrea una vez por segundo el tamaño de `clasificacion.solicitudes`, de
+`tickets.clasificaciones` y de la cola de mensajes muertos de clasificación.
+
+En el modo `gateway`, uno de cada 10 tickets (`MUESTRA`) se consulta cada 0,2 s hasta que deja de
+estar en `PENDIENTE_CLASIFICACION`, como hace el frontend, para medir cuánto tarda la
+clasificación desde que se pidió el alta. Al terminar, la prueba espera a que se vacíen las colas
+de clasificación y cuenta cuántos tickets quedaron en `PENDIENTE_CLASIFICACION`.
 
 ## Cómo correrla
 
@@ -19,6 +24,7 @@ falta instalar k6: corre en un contenedor, dentro de la red del Compose.
 ```bash
 docker run --rm -i --network da2urgentiabackend_urgentia-net \
   -e MODO=gateway -e TASA=20 -e DURACION_S=60 \
+  -e RABBITMQ_USER -e RABBITMQ_PASSWORD \
   grafana/k6:1.3.0 run - < tests/carga/carga.js
 ```
 
@@ -27,47 +33,73 @@ docker run --rm -i --network da2urgentiabackend_urgentia-net \
 | `MODO` | `gateway` | `gateway` o `cola` |
 | `TASA` | `20` | Pedidos por segundo que se sostienen |
 | `DURACION_S` | `60` | Segundos a esa tasa. Antes sube durante 15 s y al final baja durante 5 s |
-| `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | los de `.env.example` | Usuario de RabbitMQ, para leer el tamaño de las colas |
+| `MUESTRA` | `10` | En el modo `gateway`, se mide la clasificación de uno de cada `MUESTRA` tickets |
+| `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | los de `.env.example` | Usuario de RabbitMQ, para leer el tamaño de las colas. Con `-e` sin valor se toman del entorno (por ejemplo, después de `set -a; . ./.env; set +a`) |
 
 En Git Bash de Windows hay que anteponer `MSYS_NO_PATHCONV=1` al comando.
 
-La prueba falla si el 95% de las creaciones de ticket tarda más de 8 s (RNF02) o si falla más
-del 1% de los pedidos.
+La prueba falla si el 95% de las altas de ticket tarda más de 8 s (RNF02), si falla más del 1% de
+los pedidos o si algún ticket de la muestra no se clasifica en 30 s.
+
+Conviene empezar cada corrida con el sistema en reposo: las colas vacías y el outbox de
+ticket-service sin mensajes pendientes. Si no, lo que quedó de la corrida anterior se mezcla con
+la nueva.
 
 ## Resultados
 
-Corridas del 14/11/2026 en una notebook, con los 9 contenedores del Compose en la misma máquina y
-`LLM_PROVIDER=mock`. Cada corrida sostiene la tasa durante 60 s.
+Corridas del 16/11/2026 en una notebook, con los 9 contenedores del Compose en la misma máquina,
+`LLM_PROVIDER=mock`, `CLASIFICACION_MODO=async` y `COLA_PREFETCH=10`. Cada corrida sostiene la
+tasa durante 60 s.
 
 ### Por el gateway
 
-| Tasa pedida | Tickets creados | Errores | Mediana | p90 | p95 | Máximo |
-|---|---|---|---|---|---|---|
-| 20 por segundo | 1407 | 0% | 26 ms | 37 ms | 41 ms | 1,0 s |
-| 100 por segundo | 6924 | 0% | 46 ms | 953 ms | 1,2 s | 5,4 s |
+Alta del ticket (`POST /api/tickets`, responde en `PENDIENTE_CLASIFICACION`):
 
-- Todos los tickets quedaron clasificados; ninguno en `PENDIENTE_CLASIFICACION`.
-- A 100 por segundo el sistema llega a su límite en esta máquina: k6 no pudo iniciar 83 pedidos
-  (1%) y sostuvo 86 por segundo. Aun así el p95 queda muy por debajo de los 8 s de RNF02.
+| Tasa pedida | Tickets creados | Errores | Mediana | p95 | Máximo |
+|---|---|---|---|---|---|
+| 10 por segundo | 707 | 0% | 11 ms | 18 ms | 39 ms |
+| 20 por segundo | 1407 | 0% | 14 ms | 25 ms | 108 ms |
+| 100 por segundo | 6489 | 0% | 39 ms | 187 ms | 481 ms |
+
+Tiempo desde el alta hasta que el ticket aparece clasificado:
+
+| Tasa pedida | Mediana | p95 | Máximo | Sin clasificar a los 30 s (muestra) | Pendientes al vaciarse las colas |
+|---|---|---|---|---|---|
+| 10 por segundo | 0,8 s | 1,2 s | 1,3 s | 0 | 0 |
+| 20 por segundo | 5,7 s | 9,6 s | 9,8 s | 0 | 0 |
+| 100 por segundo | 16,8 s | 29,3 s | 29,9 s | 587 | 3801 |
+
+- El alta responde rápido en las tres tasas, muy por debajo de los 8 s de RNF02: ya no espera a
+  la IA.
+- El límite está en el outbox de ticket-service, no en la clasificación. Publica cada mensaje y
+  espera la confirmación del broker antes de seguir con el próximo, y llegó a unos 50 mensajes por
+  segundo (mediana; máximo 95). Cada ticket genera entre 3 y 4 mensajes (`TicketCreado`,
+  `ClasificacionSolicitada`, `TicketClasificado` y, si corresponde, `TicketEscalado`), así que
+  alcanza para unos 15 tickets por segundo.
+- A 10 por segundo todo se procesa al ritmo de llegada. A 20 por segundo el outbox se va
+  atrasando durante la corrida, aunque la cola de clasificación nunca pasa de 4 mensajes. A 100
+  por segundo el atraso llegó a 202 s: al vaciarse las colas quedaban 3801 tickets pendientes,
+  porque sus mensajes todavía estaban en el outbox. No se perdió ninguno: después se clasificaron
+  todos.
+- A 100 por segundo k6 no pudo iniciar 518 altas (7%): sus 300 usuarios virtuales estaban
+  ocupados consultando los tickets de la muestra, que tardaban en clasificarse.
 
 ### Por la cola
 
-| Tasa pedida | Solicitudes | Respuestas | Mensajes muertos | Cola: mediana | Cola: máximo | Vaciado al terminar |
+| Tasa pedida | Solicitudes | Clasificaciones | Mensajes muertos | Cola: mediana | Cola: máximo | Vaciado al terminar |
 |---|---|---|---|---|---|---|
-| 20 por segundo | 1407 | 1407 | 0 | 1 | 2 | 5 s |
-| 100 por segundo | 7007 | 7007 | 0 | 344 | 1102 | 19 s |
+| 20 por segundo | 1407 | 1407 | 0 | 2 | 2 | 2 s |
+| 100 por segundo | 7007 | 7007 | 0 | 1265 | 2912 | 50 s |
 
-Con la topología de `contracts/messaging/` y `COLA_PREFETCH=10`.
-
-- No se perdió ninguna solicitud: hay una `ClasificacionGenerada` por cada `ClasificacionSolicitada`.
+- No se perdió ninguna solicitud: hay una clasificación guardada por cada `ClasificacionSolicitada`
+  (contadas en MongoDB) y ninguna fue a la cola de mensajes muertos.
 - A 20 por segundo el worker procesa al ritmo de llegada y la cola no se acumula.
-- A 100 por segundo el worker queda por detrás de la llegada: la cola llega a 1102 mensajes y se
-  vacía sola en 19 s al terminar la carga. Con `COLA_PREFETCH=4` la misma carga acumula hasta
-  3699 mensajes, por eso el default es 10.
-- Cada respuesta se escribe en dos colas quorum: `tickets.clasificaciones` (la del contrato) y la
-  cola propia de la prueba. En uso normal se escribe solo en la primera.
-- Mientras nadie consume `tickets.clasificaciones`, las respuestas de la prueba quedan ahí. Hay
-  que vaciarla a mano después de correrla (en la consola, *Purge Messages*).
+- A 100 por segundo el worker procesa unas 55 solicitudes por segundo: la cola llega a 2912
+  mensajes y se vacía sola en 50 s al terminar la carga. Con `COLA_PREFETCH=4` acumula más, por
+  eso el default es 10.
+- Las respuestas van a `tickets.clasificaciones` y a una cola propia de la prueba, que se borra al
+  terminar. ticket-service confirma sin efectos las de tickets que no existe, como las de esta
+  prueba.
 - El tamaño de las colas se lee de la API de administración de RabbitMQ, que actualiza sus
   números cada 5 s: los valores son aproximados.
 
