@@ -4,10 +4,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.urgentia.ticket.infrastructure.ServidorFalso.Pedido;
 import com.urgentia.ticket.infrastructure.ServidorFalso.Respuesta;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -25,9 +23,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Base de los tests de integracion: levanta el servicio completo (H2 en memoria) y dos
- * servidores de mentira, uno que hace de classification-service y otro que hace de los
- * dos suscriptores de eventos (notification-service y reporting-service).
+ * Base de los tests de integracion: levanta el servicio completo (H2 en memoria) y un
+ * servidor de mentira que hace de classification-service. Sin broker: los mensajes que
+ * ticket-service tiene que publicar quedan en la tabla outbox y los tests los leen de ahi.
  * Todas las clases que la extienden comparten el mismo contexto de Spring.
  */
 @SpringBootTest
@@ -35,10 +33,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public abstract class IntegracionBase {
 
     protected static final ServidorFalso IA = new ServidorFalso();
-    protected static final ServidorFalso SUSCRIPTORES = new ServidorFalso();
     protected static final String RUTA_IA = "/api/clasificaciones";
-    protected static final String RUTA_NOTIFICACIONES = "/notificaciones/api/eventos";
-    protected static final String RUTA_REPORTES = "/reportes/api/eventos";
 
     protected static final String SOLICITANTE = "b1c2d3e4-0000-4000-8000-000000000004";
     protected static final String GUARDIA = "b1c2d3e4-0000-4000-8000-000000000002";
@@ -50,7 +45,7 @@ public abstract class IntegracionBase {
     protected ObjectMapper json;
 
     @Autowired
-    private JdbcTemplate jdbc;
+    protected JdbcTemplate jdbc;
 
     @Autowired
     private PlatformTransactionManager transacciones;
@@ -58,18 +53,17 @@ public abstract class IntegracionBase {
     @DynamicPropertySource
     static void servidoresFalsos(DynamicPropertyRegistry propiedades) {
         propiedades.add("clasificacion.url", IA::url);
-        propiedades.add("eventos.suscriptores",
-                () -> SUSCRIPTORES.url() + RUTA_NOTIFICACIONES + "," + SUSCRIPTORES.url() + RUTA_REPORTES);
     }
 
     @BeforeEach
     void empezarDeCero() {
         IA.limpiar();
         IA.responder(RUTA_IA, Respuesta.json(200, RespuestasIa.comun()));
-        SUSCRIPTORES.limpiar();
-        SUSCRIPTORES.responderPorDefecto(Respuesta.json(202, "{\"resultado\":\"PROCESADO\"}"));
         // Con auto-commit apagado, el borrado tiene que ir dentro de una transaccion.
-        new TransactionTemplate(transacciones).executeWithoutResult(estado -> jdbc.update("DELETE FROM tickets"));
+        new TransactionTemplate(transacciones).executeWithoutResult(estado -> {
+            jdbc.update("DELETE FROM outbox");
+            jdbc.update("DELETE FROM tickets");
+        });
     }
 
     /** POST /api/tickets como el solicitante de la demo. */
@@ -102,18 +96,26 @@ public abstract class IntegracionBase {
         return json.readTree(resultado.andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8));
     }
 
-    /** Eventos (ya parseados) que llegaron a un suscriptor para un ticket, en orden de llegada. */
-    protected List<JsonNode> eventosDe(String ruta, String ticketId, int esperados) {
-        List<Pedido> pedidos = SUSCRIPTORES.esperarPedidos(
-                pedido -> pedido.ruta().equals(ruta) && pedido.cuerpo().contains(ticketId),
-                esperados, Duration.ofSeconds(5));
-        return pedidos.stream().map(pedido -> {
-            try {
-                return json.readTree(pedido.cuerpo());
-            } catch (Exception e) {
-                throw new IllegalStateException(e);
-            }
-        }).toList();
+    /** Sobres (ya parseados) que quedaron en el outbox para un exchange y un ticket, en el orden en que se guardaron. */
+    protected List<JsonNode> mensajesDelOutbox(String exchange, String ticketId) {
+        return jdbc.queryForList("SELECT cuerpo FROM outbox WHERE exchange = ? AND ticket_id = ? ORDER BY id",
+                String.class, exchange, UUID.fromString(ticketId)).stream().map(cuerpo -> {
+                    try {
+                        return json.readTree(cuerpo);
+                    } catch (Exception e) {
+                        throw new IllegalStateException(e);
+                    }
+                }).toList();
+    }
+
+    /** Eventos de dominio de un ticket que esperan en el outbox para salir a urgentia.eventos. */
+    protected List<JsonNode> eventosDe(String ticketId) {
+        return mensajesDelOutbox("urgentia.eventos", ticketId);
+    }
+
+    /** Filas del outbox de un ticket (todas las columnas), en orden. */
+    protected List<Map<String, Object>> filasDelOutbox(String ticketId) {
+        return jdbc.queryForList("SELECT * FROM outbox WHERE ticket_id = ? ORDER BY id", UUID.fromString(ticketId));
     }
 
     protected static List<String> tipos(List<JsonNode> eventos) {

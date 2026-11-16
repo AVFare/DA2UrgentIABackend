@@ -70,6 +70,11 @@
             <groupId>wsdl4j</groupId>
             <artifactId>wsdl4j</artifactId>
         </dependency>
+        <!-- Mensajeria con RabbitMQ: publicador del Outbox y consumidor de clasificaciones (ADR-11). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
 
         <!-- Tests -->
         <dependency>
@@ -86,6 +91,17 @@
             <groupId>com.networknt</groupId>
             <artifactId>json-schema-validator</artifactId>
             <version>${json-schema-validator.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- RabbitMQ real en Docker para los tests de mensajeria. Sin Docker, esos tests se saltean. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>rabbitmq</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

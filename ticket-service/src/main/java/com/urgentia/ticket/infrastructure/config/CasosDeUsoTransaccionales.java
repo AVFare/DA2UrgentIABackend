@@ -17,8 +17,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * Decorator: envuelve cada caso de uso en una transaccion. Asi la capa de aplicacion
  * queda sin Spring y la transaccion (un detalle tecnico) la pone la infraestructura.
- * Los eventos que publica el caso de uso salen recien cuando la transaccion confirma
- * (ver ReenvioDeEventosListener).
+ * Los eventos que publica el caso de uso se guardan en el outbox dentro de esta misma
+ * transaccion: si se deshace, no queda nada para publicar (ver Outbox y PublicadorDelOutbox).
  */
 public class CasosDeUsoTransaccionales implements CrearTicketUseCase, AsignarTicketUseCase, CambiarEstadoUseCase,
         ReclasificarTicketUseCase, ConsultarTicketsUseCase {
