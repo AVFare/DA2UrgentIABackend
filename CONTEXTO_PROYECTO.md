@@ -192,7 +192,7 @@ app/
   main.py, config.py (Settings), db.py, logging_config.py
   middleware/       correlation.py (X-Correlation-Id)
   schemas/          camel_model.py, enums.py, evento.py (sobre), notificacion.py, pagination.py, error.py, health.py
-  endpoints/        eventos.py (POST /api/eventos), notificaciones.py, health.py
+  endpoints/        notificaciones.py, health.py
   consumers/        eventos_consumer.py (cola notificaciones.eventos de RabbitMQ)
   services/         evento_service.py (reglas + idempotencia), notificacion_service.py,
                     plantillas.py (Factory), canales.py (Strategy)
@@ -238,7 +238,7 @@ src/
 | `X-User-Id` | Gateway (claim `sub`) | Id del usuario autenticado |
 | `X-User-Rol` | Gateway (claim `rol`) | Rol del usuario autenticado |
 
-Los servicios internos **confían** en `X-User-Id` / `X-User-Rol` (red interna). Las llamadas entre servicios (ticket → classification, ticket → `/api/eventos`) no pasan por el gateway ni llevan JWT.
+Los servicios internos **confían** en `X-User-Id` / `X-User-Rol` (red interna). Las llamadas entre servicios (ticket → classification) no pasan por el gateway ni llevan JWT.
 
 ### 5.2 OpenAPI por servicio (para el Swagger agregado del gateway)
 
@@ -597,14 +597,7 @@ Sin `RABBITMQ_URL` el servicio no consume la cola y atiende solo por REST. Si Ra
 
 ### 9.4 notification-service (8084)
 
-**Cola `notificaciones.eventos`** (RabbitMQ, sección 10.4): recibe `TicketEscalado`, `TicketAsignado` y `TicketResuelto`. Ack después de guardar la notificación; sobre inválido o `TicketAsignado` sin agente → dead-letter; falla transitoria → reintento. Se levanta solo si está `RABBITMQ_URL`.
-
-**`POST /api/eventos`** (solo red interna, mientras dure la transición a RabbitMQ) — body: sobre de evento (sección 10)
-```json
-// 202
-{ "eventId": "3f1b2c4d-...", "resultado": "PROCESADO" }   // o "DUPLICADO" o "IGNORADO"
-// 400 VALIDACION si el sobre no cumple el esquema
-```
+**Cola `notificaciones.eventos`** (RabbitMQ, sección 10.4): recibe `TicketEscalado`, `TicketAsignado` y `TicketResuelto`. Ack después de guardar la notificación; sobre inválido o `TicketAsignado` sin agente → dead-letter; falla transitoria → reintento. Se levanta solo si está `RABBITMQ_URL`. Es la única entrada de eventos: `POST /api/eventos` se quitó cuando ticket-service pasó a publicar por el broker.
 
 **Reglas**
 
@@ -750,7 +743,7 @@ Cada evento hace **upsert** del documento `ticket_view` usando el snapshot del p
 - Reintentos: 3 con espera 1 s, 2 s y 4 s. Si fallan todos, log `ERROR` con `eventId` (en la Defensa 1 se acepta la pérdida; en la parte 2 se resuelve con Transactional Outbox).
 - **Consumidores idempotentes:** colección `eventos_procesados` con índice único en `eventId`; si ya existe, responder 202 `DUPLICADO` sin efectos.
 - Entrega "al menos una vez": puede llegar repetido o desordenado.
-- En la Entrega 2 los eventos pasan a viajar por RabbitMQ (10.4). `POST /api/eventos` sigue andando hasta que ticket-service publique por el broker.
+- En la Entrega 2 los eventos pasan a viajar por RabbitMQ (10.4). notification-service ya no tiene `POST /api/eventos`.
 
 ### 10.4 Mensajería con RabbitMQ (Entrega 2)
 
@@ -800,8 +793,8 @@ flowchart TB
   GW --> RS[reporting-service :8085<br/>Node · MongoDB]
   TS -->|REST, timeout 7 s| CS[classification-service :8082<br/>Python · MongoDB]
   CS -->|HTTPS| LLM[(API de LLM externa)]
-  TS -. eventos POST /api/eventos .-> NS
-  TS -. eventos POST /api/eventos .-> RS
+  TS -. eventos por RabbitMQ .-> NS
+  TS -. eventos por RabbitMQ .-> RS
 ```
 
 ### 11.2 Estados del ticket
@@ -1260,7 +1253,7 @@ Vence el 30/11 (demo en video de 15 minutos como máximo). Estado al 14/11:
 | Servicio SOAP | `ConsultarEstadoTicket` en ticket-service, WSDL en `contracts/soap/` (ADR-10) | Hecho |
 | Frontend | Repo aparte (React, Vite y TypeScript) contra el gateway; CORS en el gateway | En curso |
 | Pruebas | Punta a punta, casos de falla (IA, broker y consumidor caídos) y carga básica | Pendiente |
-| Transición | Quitar `POST /api/eventos` de notification y reporting cuando ticket-service publique por el broker | Pendiente |
+| Transición | Quitar `POST /api/eventos` de notification y reporting cuando ticket-service publique por el broker | notification-service: hecho; reporting-service: pendiente |
 
 **Reglas que siguen valiendo:** no acoplar la lógica de eventos al transporte (`EventPublisherPort`), consumidores idempotentes y sin `descripcion` en los eventos de dominio.
 
