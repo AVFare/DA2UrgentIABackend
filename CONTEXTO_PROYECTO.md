@@ -2,7 +2,17 @@
 
 > **Fuente única de verdad** del proyecto UrgentIA (TP de Desarrollo de Aplicaciones II, UADE).
 > Todo el equipo (y sus asistentes de IA) trabaja a partir de este archivo.
-> Versión: 1.4 · Fecha: 06/10/2026 · Alcance: Defensa 1 (con la parte 2 ya contemplada).
+> Versión: 1.6 · Fecha: 15/11/2026 · Alcance: Entrega 2 (mensajería, SOAP, API externa y frontend).
+
+**Cambios de la versión 1.6**
+
+- ticket-service publica por RabbitMQ con **Transactional Outbox** y pide la clasificación por la cola (ADR-12). `POST /api/tickets` responde en `PENDIENTE_CLASIFICACION` con `CLASIFICACION_MODO=async` (por defecto); `sync` queda como plan B. Se quita `EVENT_SUBSCRIBERS` (secciones 4.1, 8.4, 9.2, 10.3, 14 y 17).
+
+**Cambios de la versión 1.5**
+
+- Mensajería con **RabbitMQ** (ADR-11): topología, reglas para productores y consumidores, y mensajes de clasificación asincrónica (secciones 2, 10.4 y 10.5; contrato en `contracts/messaging/`).
+- notification-service consume la cola `notificaciones.eventos` y puede mandar **mails reales** por SMTP (`EMAIL_PROVIDER=real`) (secciones 4.1, 9.4, 13 y 14).
+- La sección 17 pasa a ser el plan real de la Entrega 2.
 
 **Cambios de la versión 1.4**
 
@@ -65,9 +75,10 @@ Si sos una IA ayudando a un integrante del equipo:
 | ADR-04 | PostgreSQL para tickets y usuarios; MongoDB para clasificaciones, notificaciones y reportes | Relacional donde hay invariantes y transacciones; documentos donde la forma es flexible o es un read model |
 | ADR-05 | API Gateway como única entrada; valida JWT | Seguridad y documentación centralizadas |
 | ADR-06 | En la Defensa 1, clasificación por REST sincrónico con timeout y fallback | Simplicidad; en la parte 2 pasa a cola de mensajes |
-| ADR-07 | Eventos de dominio con sobre estándar enviados por HTTP a suscriptores | En la parte 2 se cambia el transporte a RabbitMQ/Kafka sin cambiar el formato |
+| ADR-07 | Eventos de dominio con sobre estándar enviados por HTTP a suscriptores | En la parte 2 se cambia el transporte sin cambiar el formato. **El transporte lo reemplaza ADR-11** |
 | ADR-08 | ticket-service con arquitectura hexagonal y DDD táctico; el resto con capas simples | El Core merece modelo rico; los subdominios de soporte no |
 | ADR-09 | Contract-first: OpenAPI en `contracts/` antes del código | Permite trabajar en paralelo contra mocks |
+| ADR-11 | Mensajería con RabbitMQ: exchange topic `urgentia.eventos` (routing key = `eventType`), exchange privado para la clasificación, colas quorum con dead-letter | Un consumidor caído no pierde eventos; colas y dead-letter sin más infraestructura; el sobre no cambia |
 
 > **Supuesto abierto:** el equipo maneja Java, Python y Node. Si alguien no maneja el lenguaje de su servicio, ese servicio pasa a Java (Spring Boot). Los contratos NO cambian.
 
@@ -137,14 +148,16 @@ domain/
   exception/    TransicionInvalidaException, ReglaDeNegocioException
 application/
   port/in/      CrearTicketUseCase, AsignarTicketUseCase, CambiarEstadoUseCase,
-                ReclasificarTicketUseCase, ConsultarTicketsUseCase
-  port/out/     TicketRepository, ClasificadorPort, EventPublisherPort
+                ReclasificarTicketUseCase, ConsultarTicketsUseCase, AplicarClasificacionUseCase
+  port/out/     TicketRepository, ClasificadorPort, EventPublisherPort,
+                SolicitudDeClasificacionPort, MensajesProcesadosPort
   service/      implementaciones de los casos de uso (orquestan, sin reglas)
 infrastructure/
   rest/         TicketController, dto/, mapper/, GlobalExceptionHandler, HealthController
-  persistence/  TicketJpaEntity, SpringDataTicketRepository, JpaTicketRepositoryAdapter
+  persistence/  TicketJpaEntity, SpringDataTicketRepository, JpaTicketRepositoryAdapter, JpaMensajesProcesadosAdapter
   client/       ClassificationHttpClient (ACL, implementa ClasificadorPort)
-  messaging/    SpringEventPublisherAdapter, listeners que reenvían eventos por HTTP
+  messaging/    OutboxEventPublisherAdapter, OutboxSolicitudDeClasificacionAdapter, ConsumidorDeClasificaciones
+    outbox/     Outbox, PublicadorDelOutbox (publisher confirms), EnviadorRabbit
   config/
 ```
 
@@ -180,10 +193,11 @@ app/
   middleware/       correlation.py (X-Correlation-Id)
   schemas/          camel_model.py, enums.py, evento.py (sobre), notificacion.py, pagination.py, error.py, health.py
   endpoints/        eventos.py (POST /api/eventos), notificaciones.py, health.py
+  consumers/        eventos_consumer.py (cola notificaciones.eventos de RabbitMQ)
   services/         evento_service.py (reglas + idempotencia), notificacion_service.py,
                     plantillas.py (Factory), canales.py (Strategy)
   repositories/     mongo_repository.py (base), notificacion_repository.py, evento_procesado_repository.py
-  providers/        email_provider.py (email simulado = log estructurado)
+  providers/        email_provider.py (EMAIL_PROVIDER: simulado = log estructurado; real = SMTP)
   exceptions/       api_exception.py, handlers.py (formato común de error)
 tests/              pytest con mongomock
 ```
@@ -391,9 +405,9 @@ Al aplicar una clasificación:
 
 | Desde | Hacia | Cómo |
 |---|---|---|
-| `NUEVO` | `CLASIFICADO` | Clasificación exitosa al crear |
-| `NUEVO` | `PENDIENTE_CLASIFICACION` | La IA falló o superó el timeout |
-| `PENDIENTE_CLASIFICACION` | `CLASIFICADO` | `POST /reclasificacion` exitoso |
+| `NUEVO` | `CLASIFICADO` | Clasificación exitosa al crear (modo `sync`) |
+| `NUEVO` | `PENDIENTE_CLASIFICACION` | Al crear con `CLASIFICACION_MODO=async` (se pide la clasificación por la cola), o en `sync` si la IA falló o superó el timeout |
+| `PENDIENTE_CLASIFICACION` | `CLASIFICADO` | Llega `ClasificacionGenerada` (10.5) o `POST /reclasificacion` exitoso |
 | `CLASIFICADO` | `ASIGNADO` | `PATCH /asignacion` |
 | `CLASIFICADO` | `ESCALADO` | Automático (8.3) |
 | `ASIGNADO` | `EN_CURSO` | `PATCH /estado` |
@@ -469,7 +483,9 @@ Todas las rutas de abajo son las **del servicio**; desde afuera se llaman igual 
 ```json
 // request
 { "titulo": "No puede ingresar nadie", "descripcion": "Producción caída, todos los usuarios bloqueados en el login desde las 9" }
-// 201 → Ticket (el flujo completo ocurre en esta llamada)
+// 201 → Ticket. Con CLASIFICACION_MODO=async (por defecto), en PENDIENTE_CLASIFICACION: la prioridad,
+//       el SLA y el escalamiento llegan cuando responde la IA por la cola (10.5); el cliente consulta
+//       GET /api/tickets/{id}. Con sync (plan B), el flujo completo ocurre en esta llamada.
 // 400 VALIDACION
 ```
 
@@ -521,7 +537,9 @@ Todas las rutas de abajo son las **del servicio**; desde afuera se llaman igual 
 ```
 Si está `PENDIENTE_CLASIFICACION`: `clasificacion`, `prioridad`, `fechaLimiteSla` y `motivoEscalamiento` van en `null`.
 
-**Llamada saliente a classification-service:** `POST http://classification-service:8082/api/clasificaciones`, timeout **7 s** (`CLASSIFICATION_TIMEOUT_MS=7000`). Cualquier error, timeout o 5xx → el ticket queda en `PENDIENTE_CLASIFICACION` y la creación responde 201 igual.
+**Clasificación:** con `CLASIFICACION_MODO=async` (por defecto) el alta guarda en el outbox un `ClasificacionSolicitada` (10.5) y responde enseguida; ticket-service aplica el `ClasificacionGenerada` cuando llega (ADR-12).
+
+**Llamada saliente a classification-service** (modo `sync` y reclasificación): `POST http://classification-service:8082/api/clasificaciones`, timeout **7 s** (`CLASSIFICATION_TIMEOUT_MS=7000`). Cualquier error, timeout o 5xx → el ticket queda en `PENDIENTE_CLASIFICACION` y la creación responde 201 igual.
 
 ### 9.3 classification-service (8082)
 
@@ -579,7 +597,9 @@ Sin `RABBITMQ_URL` el servicio no consume la cola y atiende solo por REST. Si Ra
 
 ### 9.4 notification-service (8084)
 
-**`POST /api/eventos`** (solo red interna) — body: sobre de evento (sección 10)
+**Cola `notificaciones.eventos`** (RabbitMQ, sección 10.4): recibe `TicketEscalado`, `TicketAsignado` y `TicketResuelto`. Ack después de guardar la notificación; sobre inválido o `TicketAsignado` sin agente → dead-letter; falla transitoria → reintento. Se levanta solo si está `RABBITMQ_URL`.
+
+**`POST /api/eventos`** (solo red interna, mientras dure la transición a RabbitMQ) — body: sobre de evento (sección 10)
 ```json
 // 202
 { "eventId": "3f1b2c4d-...", "resultado": "PROCESADO" }   // o "DUPLICADO" o "IGNORADO"
@@ -595,7 +615,7 @@ Sin `RABBITMQ_URL` el servicio no consume la cola y atiende solo por REST. Si Ra
 | `TicketResuelto` | `USUARIO:{solicitanteId}` | `EMAIL_SIMULADO` | `Tu ticket fue resuelto: {titulo}` |
 | Otros | — | — | Se responde `IGNORADO` |
 
-`EMAIL_SIMULADO` = escribir una línea de log estructurado con destinatario, asunto y mensaje (no se envía mail real en la Defensa 1).
+Canal `EMAIL_SIMULADO`: con `EMAIL_PROVIDER=simulado` (default, CI) escribe una línea de log estructurado con destinatario, asunto y mensaje; con `EMAIL_PROVIDER=real` manda el mail por SMTP (Gmail) a `EMAIL_DESTINO_DEMO`, con el destinatario original al principio del asunto (`[GRUPO:GUARDIA] [P1] Ticket escalado: …`), porque los usuarios de la demo no tienen casillas reales. Si el SMTP falla, la notificación queda `FALLIDA` y el evento no se pierde.
 
 **`GET /api/notificaciones?ticketId=&destinatario=&page=0&size=20`** → página de `Notificacion`
 **`GET /api/notificaciones/{id}`** → `Notificacion` | 404
@@ -722,12 +742,48 @@ Cada evento hace **upsert** del documento `ticket_view` usando el snapshot del p
 | `TicketEstadoCambiado` | ignora | proyecta |
 | `TicketResuelto` | **notifica** | proyecta (setea `fechaResolucion`) |
 
-### 10.3 Entrega (Defensa 1)
+### 10.3 Entrega por HTTP (Defensa 1, reemplazada)
+
+> Reemplazada por RabbitMQ con Transactional Outbox (10.4 y ADR-12): ticket-service ya no manda eventos por HTTP ni usa `EVENT_SUBSCRIBERS`. Queda como registro de la Defensa 1.
 
 - ticket-service publica **después del commit** (`@TransactionalEventListener(phase = AFTER_COMMIT)`) a cada URL de `EVENT_SUBSCRIBERS`, en paralelo y de forma asíncrona (`@Async`), sin bloquear la respuesta al cliente.
 - Reintentos: 3 con espera 1 s, 2 s y 4 s. Si fallan todos, log `ERROR` con `eventId` (en la Defensa 1 se acepta la pérdida; en la parte 2 se resuelve con Transactional Outbox).
 - **Consumidores idempotentes:** colección `eventos_procesados` con índice único en `eventId`; si ya existe, responder 202 `DUPLICADO` sin efectos.
 - Entrega "al menos una vez": puede llegar repetido o desordenado.
+- En la Entrega 2 los eventos pasan a viajar por RabbitMQ (10.4). `POST /api/eventos` sigue andando hasta que ticket-service publique por el broker.
+
+### 10.4 Mensajería con RabbitMQ (Entrega 2)
+
+Contrato: [`contracts/messaging/`](contracts/messaging/) (AsyncAPI 3.0, `rabbitmq-definitions.json` y reglas en su README). Decisión: ADR-11. El sobre de 10.1 no cambia.
+
+| Exchange | Tipo | Routing key | Publica |
+|---|---|---|---|
+| `urgentia.eventos` | topic | `eventType` | ticket-service (desde el Outbox) |
+| `urgentia.clasificacion` | direct | `ClasificacionSolicitada` / `ClasificacionGenerada` | ticket-service / classification-service |
+| `urgentia.dlx` | direct | nombre de la DLQ | RabbitMQ (dead-letter) |
+
+| Cola | Bindings | Consume |
+|---|---|---|
+| `notificaciones.eventos` | `TicketEscalado`, `TicketAsignado`, `TicketResuelto` | notification-service |
+| `reportes.eventos` | `#` (todos) | reporting-service |
+| `clasificacion.solicitudes` | `ClasificacionSolicitada` | classification-service |
+| `tickets.clasificaciones` | `ClasificacionGenerada` | ticket-service |
+
+- Colas **quorum** y durables, mensajes persistentes. Cada cola tiene su `<cola>.dlq` en `urgentia.dlx`.
+- **Quien publica:** routing key = `eventType`; propiedades `message_id` = `eventId`, `correlation_id` = `correlationId`, `type` = `eventType`, `delivery_mode` = 2; publisher confirms.
+- **Quien consume:** ack manual después de procesar; idempotencia por `eventId`; mensaje inválido → `basic.reject` sin reencolar (dead-letter); falla transitoria → `basic.reject` con reencolado (RabbitMQ lo manda a la dead-letter después de 5 reintentos, `x-delivery-limit`; no se usa `nack` porque desde RabbitMQ 4.3 no suma al contador); logs con el `correlationId` del sobre.
+- La topología la carga el contenedor `rabbitmq-topologia` al arrancar el Compose (sección 3).
+
+### 10.5 Mensajes de clasificación (Entrega 2)
+
+Esquema: [`contracts/events/clasificacion-events.schema.json`](contracts/events/clasificacion-events.schema.json). Mismo sobre que 10.1; solo viajan por `urgentia.clasificacion`, porque llevan la descripción del ticket.
+
+| Mensaje | Lo publica | Payload |
+|---|---|---|
+| `ClasificacionSolicitada` | ticket-service, al crear el ticket | `ticketId`, `titulo`, `descripcion` (igual que el body de `POST /api/clasificaciones`) |
+| `ClasificacionGenerada` | classification-service | `ticketId`, `resultado` (`CLASIFICADO` o `ERROR`) y `clasificacion` (los campos de `ClasificacionResponse`) o `error` (`codigo`, `mensaje`) |
+
+Con `resultado: ERROR`, ticket-service deja el ticket en `PENDIENTE_CLASIFICACION`; se puede reclasificar por REST.
 
 ---
 
@@ -753,9 +809,9 @@ flowchart TB
 ```mermaid
 stateDiagram-v2
   [*] --> NUEVO
-  NUEVO --> CLASIFICADO: IA ok
-  NUEVO --> PENDIENTE_CLASIFICACION: IA falla
-  PENDIENTE_CLASIFICACION --> CLASIFICADO: reclasificar
+  NUEVO --> CLASIFICADO: IA ok (sync)
+  NUEVO --> PENDIENTE_CLASIFICACION: se pide por la cola (async) / IA falla (sync)
+  PENDIENTE_CLASIFICACION --> CLASIFICADO: ClasificacionGenerada / reclasificar
   CLASIFICADO --> ASIGNADO: asignar
   CLASIFICADO --> ESCALADO: P1 o crítico (auto)
   ASIGNADO --> EN_CURSO: iniciar
@@ -793,6 +849,8 @@ sequenceDiagram
   end
   Note over T,C: Si C falla o tarda más de 7 s → PENDIENTE_CLASIFICACION y 201 igual
 ```
+
+En la Entrega 2 (`CLASIFICACION_MODO=async`) la clasificación y los eventos van por RabbitMQ con Transactional Outbox: secuencia en [`docs/diagrams/secuencia-outbox.png`](docs/diagrams/secuencia-outbox.png) (ADR-12).
 
 ---
 
@@ -940,7 +998,7 @@ La evaluación del 14/11/2026 con Groq `qwen/qwen3.8-27b` y el prompt `full` rep
 | classification-service | Facade, Strategy, Factory Method, Adapter/ACL, Repository, consumidor idempotente | `ClasificacionFacade`, `LlmProvider`, `LlmProviderFactory`, `response_parser`, `clasificacion_repository`, `ProcesadorDeSolicitudes` |
 | user-service | Repository | `UsuarioRepository` |
 | api-gateway | Chain of Responsibility, Proxy | Cadena de filtros, el gateway mismo |
-| notification-service | Observer (consumidor), Strategy, Factory, Repository | Reglas por evento, `CanalNotificacion`, plantillas, repositorio Mongo |
+| notification-service | Observer (consumidor), Strategy, Factory, Repository | Consumidor de la cola y reglas por evento, `CanalNotificacion` y `EMAIL_PROVIDER`, plantillas, repositorio Mongo |
 | reporting-service | CQRS (lectura), Strategy, Repository | Proyectores por tipo de evento, `ticket_view` |
 
 Cada README de servicio tiene una sección "Patrones aplicados" con clase/archivo y problema que resuelve.
@@ -972,6 +1030,14 @@ REPORTING_DB_PASSWORD=reporting_pass
 RABBITMQ_USER=urgentia
 RABBITMQ_PASSWORD=rabbit_pass
 
+# Mail de notification-service. "simulado" solo escribe un log; "real" manda por SMTP (Gmail).
+# SMTP_PASSWORD es una contraseña de aplicación de Google: va solo en el .env, nunca en el repo.
+# Todos los mails van a EMAIL_DESTINO_DEMO, con el destinatario original en el asunto.
+EMAIL_PROVIDER=simulado
+SMTP_USER=
+SMTP_PASSWORD=
+EMAIL_DESTINO_DEMO=
+
 # IA
 LLM_PROVIDER=mock
 LLM_API_KEY=
@@ -994,9 +1060,9 @@ CORS_ALLOWED_ORIGINS=http://localhost:5173
 |---|---|
 | api-gateway | `JWT_SECRET`, `USER_SERVICE_URL=http://user-service:8083`, `TICKET_SERVICE_URL=http://ticket-service:8081`, `CLASSIFICATION_SERVICE_URL=http://classification-service:8082`, `NOTIFICATION_SERVICE_URL=http://notification-service:8084`, `REPORTING_SERVICE_URL=http://reporting-service:8085`, `CORS_ALLOWED_ORIGINS=http://localhost:5173` |
 | user-service | `DB_URL=jdbc:postgresql://postgres:5432/users_db`, `DB_USER=users_user`, `DB_PASSWORD`, `JWT_SECRET`, `JWT_EXPIRATION_MINUTES` |
-| ticket-service | `DB_URL=jdbc:postgresql://postgres:5432/tickets_db`, `DB_USER=tickets_user`, `DB_PASSWORD`, `CLASSIFICATION_URL=http://classification-service:8082`, `CLASSIFICATION_TIMEOUT_MS`, `EVENT_SUBSCRIBERS=http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos`, `RABBITMQ_URL` |
+| ticket-service | `DB_URL=jdbc:postgresql://postgres:5432/tickets_db`, `DB_USER=tickets_user`, `DB_PASSWORD`, `CLASSIFICATION_URL=http://classification-service:8082`, `CLASSIFICATION_TIMEOUT_MS`, `CLASIFICACION_MODO=async\|sync`, `RABBITMQ_URL` |
 | classification-service | `MONGO_URI=mongodb://classification_user:<pass>@mongo:27017/classification_db`, `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LLM_TIMEOUT_MS`, `PROMPT_VERSION`, `RABBITMQ_URL`, `COLA_PREFETCH` |
-| notification-service | `MONGO_URI=mongodb://notifications_user:<pass>@mongo:27017/notifications_db`, `RABBITMQ_URL` |
+| notification-service | `MONGO_URI=mongodb://notifications_user:<pass>@mongo:27017/notifications_db`, `RABBITMQ_URL`, `EMAIL_PROVIDER=simulado\|real`, `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_DESTINO_DEMO` |
 | reporting-service | `MONGO_URI=mongodb://reporting_user:<pass>@mongo:27017/reporting_db`, `RABBITMQ_URL` |
 
 `RABBITMQ_URL=amqp://<usuario>:<clave>@rabbitmq:5672` la arma el Compose con `RABBITMQ_USER` y `RABBITMQ_PASSWORD`. Python (pika) y Node (amqplib) la usan tal cual; en Spring Boot va en `spring.rabbitmq.addresses: ${RABBITMQ_URL}`.
@@ -1104,7 +1170,7 @@ services:
       DB_USER: tickets_user
       DB_PASSWORD: ${TICKETS_DB_PASSWORD}
       CLASSIFICATION_URL: http://classification-service:8082
-      EVENT_SUBSCRIBERS: http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos
+      CLASIFICACION_MODO: ${CLASIFICACION_MODO:-async}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
     depends_on:
       postgres: { condition: service_healthy }
@@ -1179,15 +1245,24 @@ Paso a paso para una máquina limpia, verificación y problemas comunes: [`docs/
 
 ---
 
-## 17. Roadmap parte 2 (no implementar ahora, pero no bloquearlo)
+## 17. Plan de la Entrega 2
 
-- Transporte de eventos: HTTP → **RabbitMQ o Kafka** (mismo sobre, mismos nombres). ticket-service con **Transactional Outbox**.
-- Clasificación **asincrónica**: `TicketCreado` → cola → classification-service como worker → `TicketClasificado`.
-- **Servicio SOAP** (WSDL) de consulta de estado de tickets.
-- **API externa real** (por ejemplo, envío real de emails o mensajería para notificaciones).
-- Pruebas de integración de punta a punta, carga básica y manual de despliegue.
+Vence el 30/11 (demo en video de 15 minutos como máximo). Estado al 14/11:
 
-**Para no bloquearlo:** no acoplar la lógica de eventos al transporte HTTP (usar `EventPublisherPort`); mantener los consumidores idempotentes; no usar `descripcion` en los eventos.
+| Exigencia | Qué incluye | Estado |
+|---|---|---|
+| Cola de mensajes | RabbitMQ en el Compose, topología cargada al arrancar, contrato en `contracts/messaging/` (ADR-11) | Hecho |
+| Productores y consumidores | notification-service consume `notificaciones.eventos` | Hecho |
+| | ticket-service publica por RabbitMQ con Transactional Outbox (reemplaza a `HttpEventSender`, ADR-12) | Hecho |
+| | reporting-service consume `reportes.eventos` | Pendiente |
+| Clasificación por cola | `ClasificacionSolicitada` → worker de classification-service → `ClasificacionGenerada` (10.5); `POST /api/tickets` responde en `PENDIENTE_CLASIFICACION`; plan B con `CLASIFICACION_MODO=sync` | Hecho |
+| API externa real | Mail real por SMTP en notification-service (`EMAIL_PROVIDER=real`) | Hecho, probado con Gmail: evento publicado en RabbitMQ → mail recibido |
+| Servicio SOAP | `ConsultarEstadoTicket` en ticket-service, WSDL en `contracts/soap/` (ADR-10) | Hecho |
+| Frontend | Repo aparte (React, Vite y TypeScript) contra el gateway; CORS en el gateway | En curso |
+| Pruebas | Punta a punta, casos de falla (IA, broker y consumidor caídos) y carga básica | Pendiente |
+| Transición | Quitar `POST /api/eventos` de notification y reporting cuando ticket-service publique por el broker | Pendiente |
+
+**Reglas que siguen valiendo:** no acoplar la lógica de eventos al transporte (`EventPublisherPort`), consumidores idempotentes y sin `descripcion` en los eventos de dominio.
 
 ---
 

@@ -1,5 +1,6 @@
 package com.urgentia.ticket.infrastructure.config;
 
+import com.urgentia.ticket.application.port.in.AplicarClasificacionUseCase;
 import com.urgentia.ticket.application.port.in.AsignarTicketUseCase;
 import com.urgentia.ticket.application.port.in.CambiarEstadoUseCase;
 import com.urgentia.ticket.application.port.in.ConsultarTicketsUseCase;
@@ -17,29 +18,31 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * Decorator: envuelve cada caso de uso en una transaccion. Asi la capa de aplicacion
  * queda sin Spring y la transaccion (un detalle tecnico) la pone la infraestructura.
- * Los eventos que publica el caso de uso salen recien cuando la transaccion confirma
- * (ver ReenvioDeEventosListener).
+ * Los eventos que publica el caso de uso se guardan en el outbox dentro de esta misma
+ * transaccion: si se deshace, no queda nada para publicar (ver Outbox y PublicadorDelOutbox).
  */
 public class CasosDeUsoTransaccionales implements CrearTicketUseCase, AsignarTicketUseCase, CambiarEstadoUseCase,
-        ReclasificarTicketUseCase, ConsultarTicketsUseCase {
+        ReclasificarTicketUseCase, ConsultarTicketsUseCase, AplicarClasificacionUseCase {
 
     private final CrearTicketUseCase crear;
     private final AsignarTicketUseCase asignar;
     private final CambiarEstadoUseCase cambiarEstado;
     private final ReclasificarTicketUseCase reclasificar;
     private final ConsultarTicketsUseCase consultar;
+    private final AplicarClasificacionUseCase aplicarClasificacion;
     private final TransactionTemplate escritura;
     private final TransactionTemplate lectura;
 
     public CasosDeUsoTransaccionales(CrearTicketUseCase crear, AsignarTicketUseCase asignar,
                                      CambiarEstadoUseCase cambiarEstado, ReclasificarTicketUseCase reclasificar,
-                                     ConsultarTicketsUseCase consultar, TransactionTemplate escritura,
-                                     TransactionTemplate lectura) {
+                                     ConsultarTicketsUseCase consultar, AplicarClasificacionUseCase aplicarClasificacion,
+                                     TransactionTemplate escritura, TransactionTemplate lectura) {
         this.crear = crear;
         this.asignar = asignar;
         this.cambiarEstado = cambiarEstado;
         this.reclasificar = reclasificar;
         this.consultar = consultar;
+        this.aplicarClasificacion = aplicarClasificacion;
         this.escritura = escritura;
         this.lectura = lectura;
     }
@@ -62,6 +65,11 @@ public class CasosDeUsoTransaccionales implements CrearTicketUseCase, AsignarTic
     @Override
     public Ticket reclasificar(TicketId ticketId) {
         return escritura.execute(estado -> reclasificar.reclasificar(ticketId));
+    }
+
+    @Override
+    public Resultado aplicar(ClasificacionRecibida recibida) {
+        return escritura.execute(estado -> aplicarClasificacion.aplicar(recibida));
     }
 
     @Override

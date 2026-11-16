@@ -5,7 +5,8 @@ import java.util.List;
 
 /**
  * Puerto de salida para publicar eventos de dominio. La aplicacion no sabe como viajan
- * (hoy HTTP despues del commit; en la parte 2, un broker): cambiar el transporte no la toca.
+ * (en la Entrega 1 por HTTP; ahora por RabbitMQ desde el Transactional Outbox): cambiar el
+ * transporte no la toca. Se llama dentro de la transaccion del caso de uso.
  */
 public interface EventPublisherPort {
 

@@ -36,6 +36,24 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
+  # RabbitMQ (seccion 10.4 y contracts/messaging/). RABBITMQ_URL la arma el Compose:
+  # amqp://usuario:clave@rabbitmq:5672. Fuera del Compose: amqp://urgentia:rabbit_pass@localhost:5672.
+  rabbitmq:
+    addresses: ${RABBITMQ_URL:amqp://guest:guest@localhost:5672}
+    connection-timeout: 5s
+    # Publisher confirms y mandatory: el Outbox marca un mensaje como publicado recien con el ack del broker.
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    # Consumidor de tickets.clasificaciones: ack manual despues de procesar (contracts/messaging/README.md).
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 10
+        default-requeue-rejected: false
+        # Si la cola todavia no existe (por ejemplo, desde el IDE sin la topologia), sigue reintentando.
+        missing-queues-fatal: false
 
 # Una linea JSON por evento: timestamp, level, service, correlationId, message.
 logging:
@@ -49,16 +67,21 @@ logging:
 servicio:
   version: 0.1.0
 
-# Llamada a la IA (seccion 9.2).
+# Clasificacion (secciones 9.2 y 10.5). CLASIFICACION_MODO=async pide la clasificacion por la cola
+# (el POST responde en PENDIENTE_CLASIFICACION); sync es el plan B: llama a la IA por REST dentro del POST.
+# La reclasificacion manual va siempre por REST (url y timeout-ms).
 clasificacion:
+  modo: ${CLASIFICACION_MODO:async}
   url: ${CLASSIFICATION_URL:http://localhost:8082}
   timeout-ms: ${CLASSIFICATION_TIMEOUT_MS:7000}
 
-# Envio de eventos (seccion 10.3). EVENT_SUBSCRIBERS: URLs separadas por coma.
-eventos:
-  suscriptores: ${EVENT_SUBSCRIBERS:}
-  reintentos-ms: 1000,2000,4000
-  timeout-ms: 5000
+# Transactional Outbox (ADR-12): cada intervalo-ms se publican las filas pendientes en RabbitMQ.
+outbox:
+  publicador:
+    habilitado: true
+    intervalo-ms: 500
+    lote: 100
+    timeout-confirmacion-ms: 5000
 
 management:
   endpoints:

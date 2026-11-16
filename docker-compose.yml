@@ -141,7 +141,7 @@ services:
       DB_PASSWORD: ${TICKETS_DB_PASSWORD}
       CLASSIFICATION_URL: http://classification-service:8082
       CLASSIFICATION_TIMEOUT_MS: ${CLASSIFICATION_TIMEOUT_MS:-7000}
-      EVENT_SUBSCRIBERS: http://notification-service:8084/api/eventos,http://reporting-service:8085/api/eventos
+      CLASIFICACION_MODO: ${CLASIFICACION_MODO:-async}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:

@@ -6,10 +6,20 @@ spring:
     driver-class-name: org.h2.Driver
     username: sa
     password: ""
+  # Sin broker: el consumidor de clasificaciones no arranca (los tests con RabbitMQ real lo prenden).
+  rabbitmq:
+    listener:
+      simple:
+        auto-startup: false
 
+# Los tests de la API usan el modo sync (la IA es un servidor de mentira). El modo async
+# se prueba en ClasificacionPorColaTest y en ClasificacionPorColaEnRabbitMqTest.
 clasificacion:
+  modo: sync
   timeout-ms: 1000
 
-eventos:
-  reintentos-ms: 50,50,50
-  timeout-ms: 1000
+# Sin broker en los tests comunes: los mensajes quedan en la tabla outbox y los tests los leen de ahi.
+# Los tests con RabbitMQ real (Testcontainers) prenden el publicador y el consumidor.
+outbox:
+  publicador:
+    habilitado: false
