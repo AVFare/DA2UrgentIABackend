@@ -8,7 +8,7 @@
 //   1. notification-service registra la notificacion a GRUPO:GUARDIA (GET /api/notificaciones).
 //   2. reporting-service proyecta el ticket como ESCALADO (GET /api/reportes/tickets).
 //   3. classification-service guarda la clasificacion (GET /api/clasificaciones) y publica
-//      ClasificacionGenerada, que queda en tickets.clasificaciones mientras ticket-service no la consuma.
+//      ClasificacionGenerada, que consume ticket-service (como el ticket es de prueba, la confirma sin efectos).
 //   4. Las colas de trabajo se vacian y las DLQ quedan vacias.
 //
 // Uso, desde la raiz del repo y con el Compose levantado:  node infra/ci/verificar-mensajeria.cjs
@@ -26,7 +26,7 @@ const VHOST = '%2F';
 const TIMEOUT_MS = Number(process.env.TIMEOUT_MS || 60000);
 const INTERVALO_MS = 1000;
 
-const COLAS_DE_TRABAJO = ['notificaciones.eventos', 'reportes.eventos', 'clasificacion.solicitudes'];
+const COLAS_DE_TRABAJO = ['notificaciones.eventos', 'reportes.eventos', 'clasificacion.solicitudes', 'tickets.clasificaciones'];
 const DLQS = [
   'notificaciones.eventos.dlq',
   'reportes.eventos.dlq',
@@ -200,30 +200,10 @@ async function main() {
     return { ok: vista?.estado === 'ESCALADO' && vista?.escalado === true, detalle: vista ?? 'sin vista' };
   });
 
-  const clasificacion = await esperarQue('classification-service guardo la clasificacion', async () => {
+  await esperarQue('classification-service guardo la clasificacion', async () => {
     const pagina = await gateway(`/api/clasificaciones?ticketId=${caso.ticketId}`, tokenAdmin);
     return { ok: pagina.content.length > 0, valor: pagina.content[0], detalle: pagina };
   });
-
-  // Solo mientras ticket-service no consuma tickets.clasificaciones (P2).
-  // Se espera por el contador de la cola y se mira una sola vez (con requeue), para no
-  // acercar el mensaje al x-delivery-limit.
-  const cantidad = await esperarQue('hay mensajes en tickets.clasificaciones', async () => {
-    const n = await mensajesEn('tickets.clasificaciones');
-    return { ok: n > 0, valor: n, detalle: n };
-  });
-  const mensajes = await rabbit(`/queues/${VHOST}/tickets.clasificaciones/get`, {
-    metodo: 'POST',
-    body: { count: cantidad, ackmode: 'ack_requeue_true', encoding: 'auto' },
-  });
-  const generada = mensajes
-    .map((m) => JSON.parse(m.payload))
-    .find((s) => s.eventType === 'ClasificacionGenerada' && s.payload?.ticketId === caso.ticketId);
-  assert.ok(generada, `No hay ClasificacionGenerada del ticket ${caso.ticketId} en tickets.clasificaciones`);
-  assert.equal(generada.correlationId, caso.correlationId, 'ClasificacionGenerada no repite el correlationId');
-  assert.equal(generada.payload.resultado, 'CLASIFICADO', JSON.stringify(generada.payload));
-  assert.equal(generada.payload.clasificacion.id, clasificacion.id, 'La clasificacion publicada no es la guardada');
-  console.log('OK  ClasificacionGenerada en tickets.clasificaciones');
 
   await esperarQue(`las colas de trabajo quedaron vacias (${COLAS_DE_TRABAJO.join(', ')})`, async () => {
     const cuentas = Object.fromEntries(await Promise.all(COLAS_DE_TRABAJO.map(async (c) => [c, await mensajesEn(c)])));

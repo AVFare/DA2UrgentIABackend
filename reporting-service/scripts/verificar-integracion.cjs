@@ -27,6 +27,22 @@ async function verificarIntegracion(
     );
     return respuesta.json();
   }
+  async function esperarClasificacion(creado, token) {
+    let ticket = creado;
+    const limite = Date.now() + timeoutMs;
+    while (ticket.estado === 'PENDIENTE_CLASIFICACION' && Date.now() < limite) {
+      await esperar(intervaloMs);
+      ticket = await llamar(`/api/tickets/${encodeURIComponent(creado.id)}`, {
+        token,
+      });
+    }
+    assert.notEqual(
+      ticket.estado,
+      'PENDIENTE_CLASIFICACION',
+      `P2/P4 no clasificaron el ticket ${creado.id} por la cola dentro del plazo`,
+    );
+    return ticket;
+  }
   async function login(email, password, rol) {
     const sesion = await llamar('/api/auth/login', {
       body: { email, password },
@@ -53,7 +69,7 @@ async function verificarIntegracion(
     { bearer: [] },
   ]);
 
-  const ticket = await llamar('/api/tickets', {
+  const creado = await llamar('/api/tickets', {
     token: solicitante.accessToken,
     status: 201,
     body: {
@@ -62,7 +78,10 @@ async function verificarIntegracion(
         'Produccion caida: no funciona el login y todos los usuarios estan bloqueados.',
     },
   });
-  assert.ok(ticket.id, 'El ticket creado debe tener id');
+  assert.ok(creado.id, 'El ticket creado debe tener id');
+  // Con CLASIFICACION_MODO=async el alta responde PENDIENTE_CLASIFICACION y la IA
+  // clasifica por la cola; con sync, el ticket ya vuelve clasificado.
+  const ticket = await esperarClasificacion(creado, solicitante.accessToken);
   assert.equal(
     ticket.prioridad,
     'P1',

@@ -46,6 +46,14 @@ spring:
     publisher-returns: true
     template:
       mandatory: true
+    # Consumidor de tickets.clasificaciones: ack manual despues de procesar (contracts/messaging/README.md).
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 10
+        default-requeue-rejected: false
+        # Si la cola todavia no existe (por ejemplo, desde el IDE sin la topologia), sigue reintentando.
+        missing-queues-fatal: false
 
 # Una linea JSON por evento: timestamp, level, service, correlationId, message.
 logging:
@@ -59,8 +67,11 @@ logging:
 servicio:
   version: 0.1.0
 
-# Llamada a la IA (seccion 9.2).
+# Clasificacion (secciones 9.2 y 10.5). CLASIFICACION_MODO=async pide la clasificacion por la cola
+# (el POST responde en PENDIENTE_CLASIFICACION); sync es el plan B: llama a la IA por REST dentro del POST.
+# La reclasificacion manual va siempre por REST (url y timeout-ms).
 clasificacion:
+  modo: ${CLASIFICACION_MODO:async}
   url: ${CLASSIFICATION_URL:http://localhost:8082}
   timeout-ms: ${CLASSIFICATION_TIMEOUT_MS:7000}
 

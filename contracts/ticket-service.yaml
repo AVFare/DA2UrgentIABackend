@@ -28,9 +28,15 @@ paths:
       tags: [Tickets]
       summary: Crear un ticket
       description: |
-        Crea el ticket, lo clasifica con la IA, calcula prioridad y SLA y, si es critico, lo escala.
-        Todo ocurre en esta llamada. Si la IA falla o tarda mas de 7 s, el ticket queda
-        PENDIENTE_CLASIFICACION y se responde 201 igual. El solicitante sale de X-User-Id.
+        Crea el ticket. El solicitante sale de X-User-Id. Segun CLASIFICACION_MODO (seccion 10.5):
+
+        - async (por defecto): responde enseguida con el ticket en PENDIENTE_CLASIFICACION, sin
+          prioridad, SLA ni clasificacion, y pide la clasificacion por RabbitMQ (ClasificacionSolicitada).
+          Cuando llega ClasificacionGenerada, ticket-service calcula prioridad y SLA y, si es critico,
+          lo escala. El cliente consulta GET /api/tickets/{id} hasta ver la prioridad. Si la IA no pudo
+          clasificar, el ticket sigue pendiente y se puede reclasificar.
+        - sync (plan B): clasifica con la IA por REST dentro de esta llamada, como en la Entrega 1. Si la
+          IA falla o tarda mas de 7 s, el ticket queda PENDIENTE_CLASIFICACION y se responde 201 igual.
       operationId: crearTicket
       requestBody:
         required: true
@@ -43,7 +49,7 @@ paths:
               descripcion: Producción caída, todos los usuarios bloqueados en el login desde las 9
       responses:
         '201':
-          description: Ticket creado (clasificado, escalado o pendiente de clasificacion)
+          description: Ticket creado (en async, pendiente de clasificacion; en sync, clasificado, escalado o pendiente)
           headers:
             Location:
               description: URL del ticket creado
@@ -55,10 +61,10 @@ paths:
               schema:
                 $ref: '#/components/schemas/Ticket'
               examples:
-                escalado:
-                  $ref: '#/components/examples/TicketEscalado'
                 pendiente:
                   $ref: '#/components/examples/TicketPendiente'
+                escalado:
+                  $ref: '#/components/examples/TicketEscalado'
         '400':
           $ref: '#/components/responses/Validacion'
     get:
@@ -559,7 +565,7 @@ components:
         fechaCreacion: '2026-10-05T14:03:10Z'
         fechaActualizacion: '2026-10-05T14:03:11Z'
     TicketPendiente:
-      summary: La IA no respondio (PENDIENTE_CLASIFICACION)
+      summary: Recien creado en modo async, o la IA no pudo clasificar (PENDIENTE_CLASIFICACION)
       value:
         id: 7c9e6679-7425-40de-944b-e07fc1f90ae7
         titulo: No puede ingresar nadie

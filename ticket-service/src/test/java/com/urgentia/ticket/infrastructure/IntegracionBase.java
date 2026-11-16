@@ -62,6 +62,7 @@ public abstract class IntegracionBase {
         // Con auto-commit apagado, el borrado tiene que ir dentro de una transaccion.
         new TransactionTemplate(transacciones).executeWithoutResult(estado -> {
             jdbc.update("DELETE FROM outbox");
+            jdbc.update("DELETE FROM mensajes_procesados");
             jdbc.update("DELETE FROM tickets");
         });
     }

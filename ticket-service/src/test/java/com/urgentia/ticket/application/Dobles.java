@@ -4,7 +4,9 @@ import com.urgentia.ticket.application.exception.ClasificacionNoDisponibleExcept
 import com.urgentia.ticket.application.port.out.ClasificadorPort;
 import com.urgentia.ticket.application.port.out.EventPublisherPort;
 import com.urgentia.ticket.application.port.out.FiltroTickets;
+import com.urgentia.ticket.application.port.out.MensajesProcesadosPort;
 import com.urgentia.ticket.application.port.out.Pagina;
+import com.urgentia.ticket.application.port.out.SolicitudDeClasificacionPort;
 import com.urgentia.ticket.application.port.out.TicketRepository;
 import com.urgentia.ticket.domain.event.DomainEvent;
 import com.urgentia.ticket.domain.model.Clasificacion;
@@ -16,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 /** Dobles de prueba de los puertos de salida (sin Mockito, para que se lean facil). */
 public final class Dobles {
@@ -117,6 +120,44 @@ public final class Dobles {
 
         public List<String> tipos() {
             return publicados.stream().map(DomainEvent::tipo).toList();
+        }
+    }
+
+    /** Registra los pedidos de clasificacion por la cola y cuantos guardados habia al pedir. */
+    public static class SolicitudesQueGraban implements SolicitudDeClasificacionPort {
+
+        public final List<TicketId> pedidas = new ArrayList<>();
+        public final List<String> descripciones = new ArrayList<>();
+        public final List<Integer> guardadosAlPedir = new ArrayList<>();
+        private final RepositorioEnMemoria repositorio;
+
+        public SolicitudesQueGraban(RepositorioEnMemoria repositorio) {
+            this.repositorio = repositorio;
+        }
+
+        @Override
+        public void solicitar(TicketId ticketId, String titulo, String descripcion) {
+            pedidas.add(ticketId);
+            descripciones.add(descripcion);
+            guardadosAlPedir.add(repositorio.guardados);
+        }
+    }
+
+    /** Mensajes procesados en memoria (idempotencia del consumidor). */
+    public static class MensajesProcesadosEnMemoria implements MensajesProcesadosPort {
+
+        public final Map<UUID, String> procesados = new LinkedHashMap<>();
+
+        @Override
+        public boolean yaProcesado(UUID mensajeId) {
+            return procesados.containsKey(mensajeId);
+        }
+
+        @Override
+        public void registrar(UUID mensajeId, String tipo) {
+            if (procesados.putIfAbsent(mensajeId, tipo) != null) {
+                throw new IllegalStateException("El mensaje " + mensajeId + " ya estaba registrado");
+            }
         }
     }
 }

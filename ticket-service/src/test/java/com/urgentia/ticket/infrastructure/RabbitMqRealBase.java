@@ -19,6 +19,7 @@ import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.RabbitMQContainer;
@@ -32,6 +33,9 @@ import org.testcontainers.utility.DockerImageName;
  * (en el CI siempre corren).
  */
 @Testcontainers(disabledWithoutDocker = true)
+// Cada clase cierra su contexto al terminar: si no, su publicador y su consumidor seguirian
+// andando contra el mismo broker mientras corre la clase siguiente.
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 public abstract class RabbitMqRealBase extends IntegracionBase {
 
     protected static final List<String> COLAS = List.of(
