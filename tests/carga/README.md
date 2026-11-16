@@ -71,11 +71,13 @@ Tiempo desde el alta hasta que el ticket aparece clasificado:
 
 - El alta responde rápido en las tres tasas, muy por debajo de los 8 s de RNF02: ya no espera a
   la IA.
-- El límite está en el outbox de ticket-service, no en la clasificación. Publica cada mensaje y
-  espera la confirmación del broker antes de seguir con el próximo, y llegó a unos 50 mensajes por
-  segundo (mediana; máximo 95). Cada ticket genera entre 3 y 4 mensajes (`TicketCreado`,
-  `ClasificacionSolicitada`, `TicketClasificado` y, si corresponde, `TicketEscalado`), así que
-  alcanza para unos 15 tickets por segundo.
+- El límite está en el outbox de ticket-service, no en la clasificación. Publica los mensajes de a
+  uno: por cada mensaje espera la confirmación del broker y lo marca como publicado en la base antes
+  de pasar al siguiente. La confirmación es la que garantiza que no se pierda ninguno; lo que pone
+  el límite es hacerlo en serie. Así llegó a unos 50 mensajes por segundo (mediana; máximo 95).
+  Cada ticket genera entre 3 y 4 mensajes (`TicketCreado`, `ClasificacionSolicitada`,
+  `TicketClasificado` y, si corresponde, `TicketEscalado`), así que alcanza para unos 15 tickets
+  por segundo.
 - A 10 por segundo todo se procesa al ritmo de llegada. A 20 por segundo el outbox se va
   atrasando durante la corrida, aunque la cola de clasificación nunca pasa de 4 mensajes. A 100
   por segundo el atraso llegó a 202 s: al vaciarse las colas quedaban 3801 tickets pendientes,
