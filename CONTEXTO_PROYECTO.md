@@ -1259,7 +1259,7 @@ Vence el 30/11 (demo en video de 15 minutos como máximo). Estado al 14/11:
 | API externa real | Mail real por SMTP en notification-service (`EMAIL_PROVIDER=real`) | Hecho, probado con Gmail: evento publicado en RabbitMQ → mail recibido |
 | Servicio SOAP | `ConsultarEstadoTicket` en ticket-service, WSDL en `contracts/soap/` (ADR-10) | Hecho |
 | Frontend | Repo aparte (React, Vite y TypeScript) contra el gateway; CORS en el gateway | En curso |
-| Pruebas | Punta a punta, casos de falla (IA, broker y consumidor caídos) y carga básica | Pendiente |
+| Pruebas | Punta a punta, casos de falla (IA, broker y consumidor caídos) y carga básica | Punta a punta y casos de falla: hechos, en el CI. `infra/ci/verificar-mensajeria.cjs punta-a-punta` crea un ticket crítico por el gateway y verifica crear → cola → clasificar → escalar → notificar → reportar con el mismo `correlationId`; `infra/ci/verificar-fallas-mensajeria.cjs` (job aparte) prueba mensaje inválido a la DLQ, consumidor, broker e IA caídos. Carga básica: pendiente (P4) |
 | Transición | Quitar `POST /api/eventos` de notification y reporting cuando ticket-service publique por el broker | Pendiente |
 
 **Reglas que siguen valiendo:** no acoplar la lógica de eventos al transporte (`EventPublisherPort`), consumidores idempotentes y sin `descripcion` en los eventos de dominio.

@@ -1,4 +1,4 @@
-# UrgentIA - Demo de la Defensa 1 (cliente HTTP de IntelliJ IDEA)
+# UrgentIA - Demo de la Entrega 2 (cliente HTTP de IntelliJ IDEA)
 #
 # Antes de empezar, desde la raiz del repositorio:
 #   cp .env.example .env
@@ -6,7 +6,13 @@
 #
 # Ejecutar los pedidos en orden, de arriba hacia abajo: cada uno guarda lo que usa el
 # siguiente (tokens e id del ticket). Todo entra por el api-gateway, que es el unico
-# puerto publicado. El flujo principal espera LLM_PROVIDER=mock (valor de .env.example).
+# puerto publicado. El flujo principal espera LLM_PROVIDER=mock y CLASIFICACION_MODO=async
+# (valores de .env.example).
+#
+# La clasificacion es asincronica: POST /api/tickets responde 201 en PENDIENTE_CLASIFICACION
+# y ticket-service pide la clasificacion por RabbitMQ (ClasificacionSolicitada). Cuando
+# classification-service responde (ClasificacionGenerada), ticket-service calcula la prioridad,
+# el SLA y el escalamiento. Por eso el paso 4 consulta el ticket hasta verlo clasificado.
 
 
 ### 0. El gateway responde (ruta publica, sin token)
@@ -38,7 +44,7 @@ Content-Type: application/json
 %}
 
 
-### 2. El solicitante crea un ticket critico: vuelve P1 y ESCALADO
+### 2. El solicitante crea un ticket critico: responde enseguida, PENDIENTE_CLASIFICACION
 POST http://localhost:8080/api/tickets
 Authorization: Bearer {{tokenSolicitante}}
 Content-Type: application/json
@@ -49,10 +55,11 @@ Content-Type: application/json
 }
 
 > {%
-    client.test("Ticket creado, P1 y escalado", function () {
+    client.test("Ticket creado, esperando la clasificacion por la cola", function () {
         client.assert(response.status === 201, "Se esperaba 201");
-        client.assert(response.body.prioridad === "P1", "Se esperaba P1 (revisar LLM_PROVIDER=mock)");
-        client.assert(response.body.estado === "ESCALADO", "Se esperaba ESCALADO");
+        client.assert(response.body.estado === "PENDIENTE_CLASIFICACION",
+            "Se esperaba PENDIENTE_CLASIFICACION (revisar CLASIFICACION_MODO=async)");
+        client.assert(response.body.prioridad === null, "Sin clasificar, la prioridad viene en null");
     });
     client.global.set("ticketId", response.body.id);
 %}
@@ -76,18 +83,28 @@ Content-Type: application/json
 %}
 
 
-### 4. El agente consulta el ticket; el gateway devuelve el mismo X-Correlation-Id
+### 4. El agente consulta el ticket: ya llego la clasificacion por la cola (P1 y ESCALADO)
+# Si todavia figura PENDIENTE_CLASIFICACION, esperar un segundo y repetir el pedido.
 GET http://localhost:8080/api/tickets/{{ticketId}}
 Authorization: Bearer {{tokenAgente}}
 X-Correlation-Id: 11111111-1111-4111-8111-111111111111
 
 > {%
-    client.test("Ticket encontrado y correlacion propagada", function () {
+    client.test("Ticket clasificado por la cola, P1 y escalado", function () {
         client.assert(response.status === 200, "Se esperaba 200");
+        client.assert(response.body.estado !== "PENDIENTE_CLASIFICACION",
+            "Sigue en PENDIENTE_CLASIFICACION: la clasificacion llega por la cola, repetir el pedido");
+        client.assert(response.body.prioridad === "P1", "Se esperaba P1 (revisar LLM_PROVIDER=mock)");
+        client.assert(response.body.estado === "ESCALADO", "Se esperaba ESCALADO");
+        client.assert(response.body.clasificacion.proveedor === "mock", "Se esperaba la clasificacion del mock");
+    });
+    client.test("El gateway devuelve el mismo X-Correlation-Id", function () {
         client.assert(
             response.headers.valueOf("X-Correlation-Id") === "11111111-1111-4111-8111-111111111111",
             "El gateway debe devolver el X-Correlation-Id recibido");
     });
+    client.log("Estado: " + response.body.estado + " - Prioridad: " + response.body.prioridad
+        + " - Motivo: " + response.body.motivoEscalamiento);
 %}
 
 
@@ -108,6 +125,7 @@ Authorization: Bearer {{tokenAgente}}
 
 
 ### 6. El ticket aparece en la vista de reportes
+# Tambien llega por la cola: si el ticket no aparece, repetir el pedido.
 GET http://localhost:8080/api/reportes/tickets?prioridad=P1&estado=ESCALADO&size=100
 Authorization: Bearer {{tokenAgente}}
 
@@ -182,13 +200,17 @@ Authorization: Bearer {{tokenSolicitante}}
 
 
 # ---------------------------------------------------------------------------------------
-# Caso de fallback: la IA no responde. Se ejecuta a mano, despues del flujo principal.
+# Caso de falla: la IA no responde. Se ejecuta a mano, despues del flujo principal.
 #
 #   1) En una terminal:  docker compose stop classification-service
-#   2) Ejecutar F1: el ticket se crea igual y queda PENDIENTE_CLASIFICACION.
-#   3) En una terminal:  docker compose start classification-service
+#   2) Ejecutar F1: el ticket se crea igual (201) y queda PENDIENTE_CLASIFICACION. El pedido
+#      de clasificacion queda esperando en la cola clasificacion.solicitudes.
+#   3) Ejecutar F2: reclasificar a mano con la IA apagada responde 503 IA_NO_DISPONIBLE y el
+#      ticket no cambia.
+#   4) En una terminal:  docker compose start classification-service
 #      y esperar a que figure "healthy" en  docker compose ps
-#   4) Ejecutar F2: el ticket pasa a CLASIFICADO con su prioridad.
+#   5) Ejecutar F3: classification-service toma el pedido que esperaba en la cola y el ticket
+#      pasa solo a CLASIFICADO (P4), sin que nadie lo reclasifique.
 # ---------------------------------------------------------------------------------------
 
 ### F1. Crear un ticket con la IA apagada
@@ -204,19 +226,35 @@ Content-Type: application/json
 > {%
     client.test("El ticket se crea aunque la IA no responda", function () {
         client.assert(response.status === 201, "Se esperaba 201");
+        client.assert(response.body.estado === "PENDIENTE_CLASIFICACION", "Se esperaba PENDIENTE_CLASIFICACION");
     });
-    client.log("Estado del ticket: " + response.body.estado);
     client.global.set("ticketPendienteId", response.body.id);
 %}
 
 
-### F2. El agente reclasifica el ticket con la IA otra vez arriba
+### F2. Reclasificar con la IA apagada: 503 y el ticket no cambia
 POST http://localhost:8080/api/tickets/{{ticketPendienteId}}/reclasificacion
 Authorization: Bearer {{tokenAgente}}
 
 > {%
-    client.test("Ticket reclasificado", function () {
+    client.test("Con la IA apagada: 503 IA_NO_DISPONIBLE", function () {
+        client.assert(response.status === 503, "Se esperaba 503 (revisar que classification-service este frenado)");
+        client.assert(response.body.codigo === "IA_NO_DISPONIBLE", "Se esperaba IA_NO_DISPONIBLE");
+    });
+%}
+
+
+### F3. Con la IA otra vez arriba, el ticket se clasifica solo por la cola
+# Si todavia figura PENDIENTE_CLASIFICACION, esperar unos segundos y repetir el pedido.
+GET http://localhost:8080/api/tickets/{{ticketPendienteId}}
+Authorization: Bearer {{tokenAgente}}
+
+> {%
+    client.test("Ticket clasificado por la cola al volver la IA", function () {
         client.assert(response.status === 200, "Se esperaba 200");
+        client.assert(response.body.estado === "CLASIFICADO",
+            "Se esperaba CLASIFICADO (si sigue PENDIENTE_CLASIFICACION, repetir el pedido)");
+        client.assert(response.body.prioridad === "P4", "Se esperaba P4 (revisar LLM_PROVIDER=mock)");
     });
     client.log("Estado: " + response.body.estado + " - Prioridad: " + response.body.prioridad);
 %}
