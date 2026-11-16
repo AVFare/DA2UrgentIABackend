@@ -200,10 +200,16 @@ jobs:
           done
           exit "$faltan"
 
-      # Publica a mano un TicketEscalado y un ClasificacionSolicitada por la API de administracion y
-      # verifica que los procesen notification, reporting y classification sin dejar nada en las DLQ.
+      # Contrato de los consumidores: publica a mano un TicketEscalado y un ClasificacionSolicitada por la
+      # API de administracion y verifica que los procesen notification, reporting y classification sin
+      # dejar nada en las DLQ.
       - name: Probar la mensajeria publicando a mano en RabbitMQ
-        run: node infra/ci/verificar-mensajeria.cjs
+        run: node infra/ci/verificar-mensajeria.cjs contrato
+
+      # Camino feliz completo: crea un ticket critico por el gateway y sigue cada mensaje con el
+      # X-Correlation-Id del alta (cola espia temporal): crear, cola, clasificar, escalar, notificar y reportar.
+      - name: Probar punta a punta desde el gateway por RabbitMQ
+        run: node infra/ci/verificar-mensajeria.cjs punta-a-punta
 
       - name: Mostrar estado y logs si algo fallo
         if: failure()
