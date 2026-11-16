@@ -78,6 +78,7 @@ cada grupo (la lista completa de variables está en la
 | `POSTGRES_PASSWORD`, `*_DB_PASSWORD`, `MONGO_ROOT_PASSWORD` | Se usan **solo la primera vez**, cuando se crean los volúmenes. Si se cambian después, ver [Problemas comunes](#8-problemas-comunes) |
 | `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | Usuario y clave del broker y de su consola. **Sin caracteres especiales** (`@ : / # ?`): el Compose los arma en la URL `amqp://usuario:clave@rabbitmq:5672`. También se usan solo la primera vez |
 | `LLM_PROVIDER` | `mock` (por defecto): clasifica por palabras clave, sin internet ni API key. Ver [sección 6](#6-ia-y-correo) |
+| `CLASIFICACION_MODO` | `async` (por defecto; si la línea no está en el `.env`, el Compose usa `async` igual): el alta responde enseguida en `PENDIENTE_CLASIFICACION` y la clasificación llega por RabbitMQ. `sync` es el plan B: ticket-service llama a la IA por REST dentro del alta, como en la entrega 1. Si se cambia, recrear ticket-service con `docker compose up -d --wait ticket-service` |
 | `EMAIL_PROVIDER`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_DESTINO_DEMO` | `simulado` (por defecto): el mail solo se escribe en el log y las otras tres quedan vacías. Con `real` sale por Gmail y las tres son obligatorias. Ver [Correo](#correo) |
 | `CORS_ALLOWED_ORIGINS` | Orígenes del front que acepta el gateway. Por defecto `http://localhost:5173`, que es el del front tanto con Vite como con su contenedor. Ver [sección 9.2](#92-configurar-el-env) |
 
@@ -176,20 +177,22 @@ en cada `docker compose up`, así que aparece aunque ningún servicio esté cone
    `notificaciones.eventos`, `reportes.eventos`, `clasificacion.solicitudes`,
    `tickets.clasificaciones` y la `.dlq` de cada una.
 
-Los servicios que ya tienen su código AMQP se conectan solos al arrancar:
+Los cuatro servicios que usan el broker se conectan solos al arrancar:
 
-6. En la pestaña **Connections** hay **tres** conexiones, todas con el usuario de `RABBITMQ_USER` y
-   estado `running`: las de notification-service, reporting-service y classification-service. Las
-   conexiones se nombran por IP y puerto, no por servicio. ticket-service todavía no usa el broker
-   (sigue mandando los eventos por HTTP), así que no tiene conexión; user-service y el gateway
-   nunca la tienen.
+6. En la pestaña **Connections** hay **al menos cuatro** conexiones, todas con el usuario de
+   `RABBITMQ_USER` y estado `running`: las de ticket-service, classification-service,
+   notification-service y reporting-service. Las conexiones se nombran por IP y puerto, no por
+   servicio. user-service y el gateway nunca tienen conexión.
 7. Para ver qué servicio consume qué, en **Queues and Streams** entrar a cada cola y mirar la sección
    **Consumers**: tienen un consumidor `notificaciones.eventos` (notification-service),
-   `reportes.eventos` (reporting-service) y `clasificacion.solicitudes` (classification-service).
-   `tickets.clasificaciones` y las `.dlq` no tienen ninguno.
+   `reportes.eventos` (reporting-service), `clasificacion.solicitudes` (classification-service) y
+   `tickets.clasificaciones` (ticket-service). Las `.dlq` no tienen ninguno.
 
-Si hay menos de tres conexiones, ver el log del servicio que falta: los tres reintentan cada
-5 segundos mientras no pueden conectarse.
+ticket-service publica en `urgentia.eventos` los eventos de dominio y en `urgentia.clasificacion` el
+`ClasificacionSolicitada` de cada alta, desde su Outbox (ADR-12); ya no manda eventos por HTTP.
+
+Si hay menos de cuatro conexiones, ver el log del servicio que falta: todos reintentan solos
+mientras no pueden conectarse.
 
 ## 6. IA y correo
 
