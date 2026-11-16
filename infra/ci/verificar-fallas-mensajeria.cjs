@@ -1,26 +1,32 @@
-// Pruebas de falla de la mensajeria sobre el Compose levantado (LLM_PROVIDER=mock).
+// Pruebas de falla de la mensajeria sobre el Compose levantado (LLM_PROVIDER=mock, CLASIFICACION_MODO=async).
 //
-// Complementa verificar-mensajeria.cjs (camino feliz). Publica a mano por la API de administracion
-// de RabbitMQ y frena o reconfigura contenedores con "docker compose". Cada prueba deja todo como
+// Complementa verificar-mensajeria.cjs (camino feliz). Crea tickets por el gateway (ticket-service los
+// publica por el Outbox), publica a mano por la API de administracion de RabbitMQ cuando hace falta un
+// mensaje invalido, y frena o reconfigura contenedores con "docker compose". Cada prueba deja todo como
 // estaba, aunque falle.
 //
-//   dlq         1. Mensaje invalido: en cada cola de trabajo, un mensaje que no es JSON y uno sin
-//                  payload. Los dos tienen que llegar a <cola>.dlq por rechazo (x-death "rejected"),
-//                  sin reintentos.
-//   consumidor  2. Consumidor caido: con notification-service y reporting-service frenados, un
-//                  TicketEscalado queda en notificaciones.eventos y reportes.eventos; al levantarlos
-//                  lo procesan y las colas se vacian.
-//   broker      3. Broker caido: se frena rabbitmq y se levanta. Los tres consumidores se reconectan
-//                  solos (consumidores en las colas y conexiones en la API de administracion) y
-//                  procesan un evento publicado despues de la caida.
+//   dlq         1. Mensaje invalido: en cada una de las 4 colas de trabajo, un mensaje que no es JSON y
+//                  uno sin payload. Los dos tienen que llegar a <cola>.dlq por rechazo (x-death
+//                  "rejected"), sin reintentos.
+//   consumidor  2. Consumidor caido: con notification-service y reporting-service frenados se crea un
+//                  ticket critico. Se clasifica y escala igual, y sus eventos quedan esperando en
+//                  notificaciones.eventos y reportes.eventos; al levantarlos los procesan y las colas
+//                  se vacian.
+//   broker      3. Broker caido: con rabbitmq frenado se crea un ticket (el alta no depende del broker:
+//                  los mensajes quedan en el Outbox). Al levantarlo, los cuatro consumidores se
+//                  reconectan solos (consumidores en las colas y conexiones en la API de administracion),
+//                  el Outbox publica lo pendiente y el ticket termina clasificado, escalado, notificado
+//                  y proyectado.
 //   ia          4. IA caida: classification-service con LLM_PROVIDER=ollama apuntando a un puerto sin
-//                  nadie (conexion rechazada) y despues a un "LLM" que acepta la conexion y no
-//                  contesta (timeout). En los dos casos publica ClasificacionGenerada con resultado
-//                  ERROR, no reintenta, no manda a la DLQ y no guarda clasificacion. Al final vuelve
-//                  a la configuracion del .env y se comprueba que clasifica otra vez.
+//                  nadie (conexion rechazada) y despues a un "LLM" que acepta la conexion y no contesta
+//                  (timeout). En los dos casos el worker publica ClasificacionGenerada con resultado
+//                  ERROR, no reintenta, no manda a la DLQ y no guarda clasificacion; el ticket queda en
+//                  PENDIENTE_CLASIFICACION y reclasificarlo con la IA caida da 503 IA_NO_DISPONIBLE. Al
+//                  volver a la configuracion del .env, los dos se reclasifican y un ticket nuevo se
+//                  clasifica por la cola.
 //
-// Para leer las ClasificacionGenerada sin tocar tickets.clasificaciones (la cola de ticket-service),
-// se crea una cola temporal propia enlazada al mismo routing key, y se borra al final.
+// Para leer las ClasificacionGenerada sin quitarselas a ticket-service, se crea una cola temporal
+// propia enlazada al mismo routing key, y se borra al final.
 //
 // Uso, desde la raiz del repo y con el Compose levantado:
 //   node infra/ci/verificar-fallas-mensajeria.cjs                 (las cuatro, en orden)
@@ -47,15 +53,20 @@ const BROKER_CAIDO_MS = 12000;
 const NOTIFICACIONES = 'notificaciones.eventos';
 const REPORTES = 'reportes.eventos';
 const SOLICITUDES = 'clasificacion.solicitudes';
-const COLAS_DE_TRABAJO = [NOTIFICACIONES, REPORTES, SOLICITUDES];
-const DLQS = [...COLAS_DE_TRABAJO, 'tickets.clasificaciones'].map((cola) => `${cola}.dlq`);
+const CLASIFICACIONES = 'tickets.clasificaciones';
+const COLAS_DE_TRABAJO = [NOTIFICACIONES, REPORTES, SOLICITUDES, CLASIFICACIONES];
+const DLQS = COLAS_DE_TRABAJO.map((cola) => `${cola}.dlq`);
+const SERVICIO_DE = {
+  [NOTIFICACIONES]: 'notification-service',
+  [REPORTES]: 'reporting-service',
+  [SOLICITUDES]: 'classification-service',
+  [CLASIFICACIONES]: 'ticket-service',
+};
 const COLA_ESPIA = 'ci.fallas.clasificaciones-generadas';
 const PUERTO_LLM_MUDO = 9999;
 // Acepta conexiones y nunca contesta. Corre dentro del contenedor de classification-service.
 const LLM_MUDO = `import socket,itertools; s=socket.create_server(('127.0.0.1', ${PUERTO_LLM_MUDO})); c=[s.accept() for _ in itertools.count()]`;
 const LLM_MUDO_ESCUCHA = `import socket; socket.create_connection(('127.0.0.1', ${PUERTO_LLM_MUDO}), 1).close()`;
-// Sofia Solicitante, de los usuarios semilla de user-service (DatosSemilla).
-const SOLICITANTE_SEMILLA = 'b1c2d3e4-0000-4000-8000-000000000004';
 
 // ---------- Utilidades ----------
 
@@ -78,7 +89,7 @@ async function pedir(url, { metodo = 'GET', headers = {}, body, status = [200] }
     method: metodo,
     headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...headers },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(15000),
   });
   const texto = await respuesta.text();
   if (!status.includes(respuesta.status)) {
@@ -120,51 +131,22 @@ const fecha = (d) => d.toISOString().replace(/\.\d{3}Z$/, 'Z');
 
 function crearCaso(prueba) {
   return {
-    ticketId: randomUUID(),
+    ticketId: null,
     correlationId: `p1-fallas-${prueba}-${randomUUID()}`,
-    titulo: 'Caida de produccion (prueba de falla)',
+    titulo: `Caida de produccion (prueba de falla: ${prueba})`,
     descripcion: 'Produccion caida: no funciona el login y todos los usuarios estan bloqueados.',
   };
 }
 
-function sobre(caso, eventType, payload) {
+function sobre(eventType, source, correlationId) {
   return {
     eventId: randomUUID(),
     eventType,
     version: 1,
     occurredAt: fecha(new Date()),
-    correlationId: caso.correlationId,
-    source: 'ticket-service',
-    payload,
+    correlationId,
+    source,
   };
-}
-
-function ticketEscalado(caso) {
-  const ahora = new Date();
-  return sobre(caso, 'TicketEscalado', {
-    ticket: {
-      ticketId: caso.ticketId,
-      titulo: caso.titulo,
-      estado: 'ESCALADO',
-      prioridad: 'P1',
-      categoria: 'INCIDENTE',
-      moduloAfectado: 'AUTENTICACION',
-      solicitanteId: SOLICITANTE_SEMILLA,
-      agenteAsignadoId: null,
-      fechaCreacion: fecha(ahora),
-      fechaLimiteSla: fecha(new Date(ahora.getTime() + 60 * 60 * 1000)),
-    },
-    estadoAnterior: 'CLASIFICADO',
-    motivo: 'Prioridad P1',
-  });
-}
-
-function clasificacionSolicitada(caso) {
-  return sobre(caso, 'ClasificacionSolicitada', {
-    ticketId: caso.ticketId,
-    titulo: caso.titulo,
-    descripcion: caso.descripcion,
-  });
 }
 
 // ---------- Contexto compartido por las pruebas ----------
@@ -177,12 +159,12 @@ function crearContexto() {
   const mensajesEn = async (nombre) => (await cola(nombre)).messages ?? 0;
   const tokens = {};
 
-  // Publica en un exchange; con amq.default y routing key = nombre de la cola, va directo a esa cola.
-  async function publicar(exchange, routingKey, payload, { messageId, correlationId, type }) {
-    const resultado = await rabbit(`/exchanges/${VHOST}/${encodeURIComponent(exchange)}/publish`, {
+  // Con amq.default y routing key = nombre de la cola, el mensaje va directo a esa cola.
+  async function publicarEnCola(nombre, payload, { messageId, correlationId, type, appId }) {
+    const resultado = await rabbit(`/exchanges/${VHOST}/amq.default/publish`, {
       metodo: 'POST',
       body: {
-        routing_key: routingKey,
+        routing_key: nombre,
         payload,
         payload_encoding: 'string',
         properties: {
@@ -191,20 +173,11 @@ function crearContexto() {
           delivery_mode: 2,
           message_id: messageId,
           correlation_id: correlationId,
-          ...(type ? { type, app_id: 'ticket-service' } : {}),
+          ...(type ? { type, app_id: appId } : {}),
         },
       },
     });
-    assert.equal(resultado.routed, true, `El mensaje ${messageId} no llego a ninguna cola de ${exchange}`);
-  }
-
-  async function publicarSobre(exchange, evento) {
-    await publicar(exchange, evento.eventType, JSON.stringify(evento), {
-      messageId: evento.eventId,
-      correlationId: evento.correlationId,
-      type: evento.eventType,
-    });
-    console.log(`OK  ${evento.eventType} publicado en ${exchange} (ticketId=${evento.payload.ticketId ?? evento.payload.ticket.ticketId})`);
+    assert.equal(resultado.routed, true, `El mensaje ${messageId} no llego a ${nombre}`);
   }
 
   // Saca mensajes de una cola (ack_requeue_false). Solo para colas propias o que tienen que estar vacias.
@@ -234,10 +207,45 @@ function crearContexto() {
     return sesion.accessToken;
   }
 
-  const gateway = (ruta, token, correlationId) =>
+  const gateway = (ruta, token, correlationId, { metodo = 'GET', body, status = [200] } = {}) =>
     pedir(`${GATEWAY}${ruta}`, {
+      metodo,
+      body,
+      status,
       headers: { Authorization: `Bearer ${token}`, 'X-Correlation-Id': correlationId || `p1-fallas-${randomUUID()}` },
     });
+
+  // ---------- Tickets por el gateway ----------
+
+  async function crearTicket(caso) {
+    const ticket = await gateway('/api/tickets', tokens.solicitante, caso.correlationId, {
+      metodo: 'POST',
+      body: { titulo: caso.titulo, descripcion: caso.descripcion },
+      status: [201],
+    });
+    assert.ok(ticket.id, 'El alta no devolvio el id del ticket');
+    caso.ticketId = ticket.id;
+    console.log(`OK  ticket ${ticket.id} creado por el gateway en ${ticket.estado}`);
+    return ticket;
+  }
+
+  const verTicket = (caso) => gateway(`/api/tickets/${caso.ticketId}`, tokens.agente, caso.correlationId);
+
+  async function esperarEstado(caso, estado) {
+    return esperarQue(`el ticket ${caso.ticketId} quedo en ${estado}`, async () => {
+      const ticket = await verTicket(caso);
+      return { ok: ticket.estado === estado, valor: ticket, detalle: ticket.estado };
+    });
+  }
+
+  async function reclasificar(caso, status) {
+    return gateway(`/api/tickets/${caso.ticketId}/reclasificacion`, tokens.agente, caso.correlationId, {
+      metodo: 'POST',
+      status: [status],
+    });
+  }
+
+  // ---------- Efectos en los consumidores ----------
 
   async function esperarNotificacion(caso) {
     await esperarQue('notification-service registro la notificacion a GRUPO:GUARDIA', async () => {
@@ -259,18 +267,6 @@ function crearContexto() {
 
   async function clasificacionesGuardadas(caso) {
     return (await gateway(`/api/clasificaciones?ticketId=${caso.ticketId}`, tokens.admin, caso.correlationId)).content;
-  }
-
-  async function esperarClasificado(caso) {
-    const guardada = await esperarQue('classification-service guardo la clasificacion', async () => {
-      const contenido = await clasificacionesGuardadas(caso);
-      return { ok: contenido.length > 0, valor: contenido[0], detalle: contenido };
-    });
-    const generada = await esperarGenerada(caso.ticketId);
-    assert.equal(generada.correlationId, caso.correlationId, 'ClasificacionGenerada no repite el correlationId');
-    assert.equal(generada.payload.resultado, 'CLASIFICADO', JSON.stringify(generada.payload));
-    assert.equal(generada.payload.clasificacion.id, guardada.id, 'La clasificacion publicada no es la guardada');
-    console.log('OK  ClasificacionGenerada con resultado CLASIFICADO');
   }
 
   async function esperarColasVacias(colas) {
@@ -311,8 +307,9 @@ function crearContexto() {
   }
 
   return {
-    rabbit, cola, mensajesEn, publicar, publicarSobre, sacar, esperarGenerada, login, tokens,
-    esperarNotificacion, esperarProyeccion, clasificacionesGuardadas, esperarClasificado,
+    rabbit, cola, mensajesEn, publicarEnCola, sacar, esperarGenerada, login, tokens,
+    crearTicket, verTicket, esperarEstado, reclasificar,
+    esperarNotificacion, esperarProyeccion, clasificacionesGuardadas,
     esperarColasVacias, esperarDlqsVacias, prepararColaEspia, borrarColaEspia,
   };
 }
@@ -322,24 +319,26 @@ function crearContexto() {
 async function pruebaMensajeInvalido(ctx) {
   await ctx.esperarDlqsVacias();
   const correlationId = `p1-fallas-dlq-${randomUUID()}`;
+  // Cada cola con el tipo de mensaje y el source que espera su consumidor, para que lo unico
+  // invalido sea lo que la prueba rompe.
   const casos = {
-    [NOTIFICACIONES]: 'TicketEscalado',
-    [REPORTES]: 'TicketEscalado',
-    [SOLICITUDES]: 'ClasificacionSolicitada',
+    [NOTIFICACIONES]: ['TicketEscalado', 'ticket-service'],
+    [REPORTES]: ['TicketEscalado', 'ticket-service'],
+    [SOLICITUDES]: ['ClasificacionSolicitada', 'ticket-service'],
+    [CLASIFICACIONES]: ['ClasificacionGenerada', 'classification-service'],
   };
   const esperados = {};
-  for (const [cola, eventType] of Object.entries(casos)) {
+  for (const [cola, [eventType, source]] of Object.entries(casos)) {
     const noJson = randomUUID();
-    const sinPayload = randomUUID();
-    // Directo a la cola (amq.default), para probar cada consumidor por separado.
-    await ctx.publicar('amq.default', cola, 'esto no es JSON {', { messageId: noJson, correlationId });
-    const { payload, ...sobreSinPayload } = sobre({ correlationId }, eventType, {});
-    await ctx.publicar('amq.default', cola, JSON.stringify({ ...sobreSinPayload, eventId: sinPayload }), {
-      messageId: sinPayload,
+    const sinPayload = { ...sobre(eventType, source, correlationId) };
+    await ctx.publicarEnCola(cola, 'esto no es JSON {', { messageId: noJson, correlationId });
+    await ctx.publicarEnCola(cola, JSON.stringify(sinPayload), {
+      messageId: sinPayload.eventId,
       correlationId,
       type: eventType,
+      appId: source,
     });
-    esperados[cola] = new Set([noJson, sinPayload]);
+    esperados[cola] = new Set([noJson, sinPayload.eventId]);
     console.log(`OK  publicados en ${cola}: uno que no es JSON y un ${eventType} sin payload`);
   }
 
@@ -379,8 +378,10 @@ async function pruebaConsumidorCaido(ctx) {
       const consumidores = Object.fromEntries(await Promise.all(colas.map(async (c) => [c, (await ctx.cola(c)).consumers])));
       return { ok: Object.values(consumidores).every((n) => n === 0), detalle: consumidores };
     });
-    await ctx.publicarSobre('urgentia.eventos', ticketEscalado(caso));
-    await esperarQue(`el TicketEscalado quedo esperando en ${colas.join(' y ')}`, async () => {
+    await ctx.crearTicket(caso);
+    // La clasificacion por la cola no depende de los servicios frenados.
+    await ctx.esperarEstado(caso, 'ESCALADO');
+    await esperarQue(`los eventos del ticket quedaron esperando en ${colas.join(' y ')}`, async () => {
       const cuentas = Object.fromEntries(await Promise.all(colas.map(async (c) => [c, await ctx.mensajesEn(c)])));
       return { ok: Object.values(cuentas).every((n) => n >= 1), detalle: cuentas };
     });
@@ -397,10 +398,15 @@ async function pruebaConsumidorCaido(ctx) {
 // ---------- 3. Broker caido ----------
 
 async function pruebaBrokerCaido(ctx) {
+  const caso = crearCaso('broker');
   compose(['stop', 'rabbitmq']);
   try {
+    // El alta solo guarda el ticket y sus mensajes en el Outbox, en la misma transaccion.
+    const creado = await ctx.crearTicket(caso);
+    assert.equal(creado.estado, 'PENDIENTE_CLASIFICACION', 'Con el broker caido el alta tiene que responder PENDIENTE_CLASIFICACION');
     console.log(`    RabbitMQ frenado; se espera ${BROKER_CAIDO_MS / 1000} s para que los consumidores fallen al reconectarse`);
     await esperar(BROKER_CAIDO_MS);
+    assert.equal((await ctx.verTicket(caso)).estado, 'PENDIENTE_CLASIFICACION', 'El ticket cambio de estado con el broker caido');
   } finally {
     levantar(['rabbitmq']);
   }
@@ -414,25 +420,22 @@ async function pruebaBrokerCaido(ctx) {
     });
   } catch (error) {
     // La prueba ya fallo; se reinicia el servicio que no se reconecto para dejar todo como estaba.
-    const servicioDe = { [NOTIFICACIONES]: 'notification-service', [REPORTES]: 'reporting-service', [SOLICITUDES]: 'classification-service' };
     const cuentas = await consumidores().catch(() => ({}));
-    const sinConsumidor = COLAS_DE_TRABAJO.filter((c) => !(cuentas[c] >= 1)).map((c) => servicioDe[c]);
+    const sinConsumidor = COLAS_DE_TRABAJO.filter((c) => !(cuentas[c] >= 1)).map((c) => SERVICIO_DE[c]);
     console.error(`    No se reconectaron solos: ${sinConsumidor.join(', ')}. Se reinician para dejar todo como estaba.`);
     if (sinConsumidor.length > 0) compose(['restart', ...sinConsumidor]);
     throw error;
   }
-  const conexiones = await esperarQue('hay al menos 3 conexiones en la API de administracion', async () => {
+  const conexiones = await esperarQue('hay al menos 4 conexiones en la API de administracion', async () => {
     const lista = await ctx.rabbit('/connections');
-    return { ok: lista.length >= 3, valor: lista, detalle: lista.length };
+    return { ok: lista.length >= 4, valor: lista, detalle: lista.length };
   });
   for (const c of conexiones) console.log(`    conexion de ${c.client_properties?.product ?? '?'} desde ${c.peer_host}`);
 
-  const caso = crearCaso('broker');
-  await ctx.publicarSobre('urgentia.eventos', ticketEscalado(caso));
-  await ctx.publicarSobre('urgentia.clasificacion', clasificacionSolicitada(caso));
+  // El Outbox publica lo pendiente: ClasificacionSolicitada -> clasificacion -> escalado -> eventos.
+  await ctx.esperarEstado(caso, 'ESCALADO');
   await ctx.esperarNotificacion(caso);
   await ctx.esperarProyeccion(caso);
-  await ctx.esperarClasificado(caso);
   await ctx.esperarColasVacias(COLAS_DE_TRABAJO);
   await ctx.esperarDlqsVacias();
 }
@@ -451,12 +454,16 @@ async function pruebaIaCaida(ctx) {
 
   async function verificarError(caso, codigo, mensaje) {
     const generada = await ctx.esperarGenerada(caso.ticketId);
-    assert.equal(generada.correlationId, caso.correlationId, 'ClasificacionGenerada no repite el correlationId');
+    assert.equal(generada.correlationId, caso.correlationId, 'ClasificacionGenerada no repite el correlationId del alta');
     assert.equal(generada.payload.resultado, 'ERROR', JSON.stringify(generada.payload));
     assert.equal(generada.payload.clasificacion, undefined, 'Con resultado ERROR no tiene que venir clasificacion');
     assert.equal(generada.payload.error?.codigo, codigo, JSON.stringify(generada.payload));
     assert.ok(mensaje.test(generada.payload.error.mensaje), `Mensaje inesperado: ${generada.payload.error.mensaje}`);
     console.log(`OK  ClasificacionGenerada con resultado ERROR y codigo ${codigo}: "${generada.payload.error.mensaje}"`);
+    // ticket-service la consume y el ticket queda para reclasificar.
+    await ctx.esperarColasVacias([SOLICITUDES, CLASIFICACIONES]);
+    assert.equal((await ctx.verTicket(caso)).estado, 'PENDIENTE_CLASIFICACION', 'El ticket no quedo en PENDIENTE_CLASIFICACION');
+    console.log('OK  el ticket sigue en PENDIENTE_CLASIFICACION');
   }
 
   console.log('    classification-service con LLM_PROVIDER=ollama, LLM_BASE_URL sin nadie escuchando y LLM_TIMEOUT_MS=2000');
@@ -465,8 +472,12 @@ async function pruebaIaCaida(ctx) {
     // a) Nadie escucha en el puerto: la conexion se rechaza.
     const rechazada = crearCaso('ia-rechazada');
     casos.push(rechazada);
-    await ctx.publicarSobre('urgentia.clasificacion', clasificacionSolicitada(rechazada));
+    await ctx.crearTicket(rechazada);
     await verificarError(rechazada, 'LLM_RESPUESTA_INVALIDA', /^No se pudo consultar al LLM: /);
+    const respuesta = await ctx.reclasificar(rechazada, 503);
+    assert.equal(respuesta.codigo, 'IA_NO_DISPONIBLE', JSON.stringify(respuesta));
+    assert.equal((await ctx.verTicket(rechazada)).estado, 'PENDIENTE_CLASIFICACION', 'El 503 cambio el ticket');
+    console.log('OK  reclasificar con la IA caida responde 503 IA_NO_DISPONIBLE y el ticket no cambia');
 
     // b) Un "LLM" que acepta la conexion y no contesta: se vence LLM_TIMEOUT_MS.
     compose(['exec', '-d', '-T', servicio, 'python', '-c', LLM_MUDO]);
@@ -476,24 +487,29 @@ async function pruebaIaCaida(ctx) {
     });
     const mudo = crearCaso('ia-timeout');
     casos.push(mudo);
-    await ctx.publicarSobre('urgentia.clasificacion', clasificacionSolicitada(mudo));
+    await ctx.crearTicket(mudo);
     await verificarError(mudo, 'LLM_TIMEOUT', /^El LLM no respondio en 2000 ms$/);
 
-    // Ninguna se reintenta ni se guarda.
-    await ctx.esperarColasVacias([SOLICITUDES]);
     for (const caso of casos) {
       assert.deepEqual(await ctx.clasificacionesGuardadas(caso), [], `Se guardo una clasificacion de ${caso.ticketId}`);
     }
-    console.log('OK  no se guardo ninguna clasificacion de las solicitudes con la IA caida');
+    console.log('OK  no se guardo ninguna clasificacion con la IA caida');
     await ctx.esperarDlqsVacias();
   } finally {
     console.log('    classification-service vuelve a la configuracion del .env');
     levantar([servicio]);
   }
 
+  for (const caso of casos) {
+    const ticket = await ctx.reclasificar(caso, 200);
+    assert.equal(ticket.estado, 'ESCALADO', `El ticket ${caso.ticketId} se reclasifico en ${ticket.estado}`);
+    console.log(`OK  con la IA de vuelta, el ticket ${caso.ticketId} se reclasifico y quedo ESCALADO`);
+  }
   const despues = crearCaso('ia-restaurada');
-  await ctx.publicarSobre('urgentia.clasificacion', clasificacionSolicitada(despues));
-  await ctx.esperarClasificado(despues);
+  await ctx.crearTicket(despues);
+  await ctx.esperarEstado(despues, 'ESCALADO');
+  await ctx.esperarColasVacias(COLAS_DE_TRABAJO);
+  await ctx.esperarDlqsVacias();
 }
 
 // ---------- Ejecucion ----------
@@ -512,8 +528,10 @@ async function main() {
   const elegidas = PRUEBAS.filter(([clave]) => pedidas.length === 0 || pedidas.includes(clave));
 
   const ctx = crearContexto();
+  ctx.tokens.solicitante = await ctx.login('solicitante@urgentia.local', 'Usuario123!');
   ctx.tokens.agente = await ctx.login('guardia@urgentia.local', 'Agente123!');
   ctx.tokens.admin = await ctx.login('admin@urgentia.local', 'Admin123!');
+
   const resultados = [];
   try {
     await ctx.prepararColaEspia();
