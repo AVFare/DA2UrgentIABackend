@@ -228,13 +228,13 @@ Correr el flujo de la demo, que crea un ticket crítico y lo escala a la guardia
 
 ```powershell
 # Windows (PowerShell)
-docker run --rm -v "${PWD}/docs/demo:/etc/newman" postman/newman run urgentia-demo.postman_collection.json --env-var baseUrl=http://host.docker.internal:8080
+docker run --rm -v "${PWD}/docs/demo:/etc/newman" postman/newman run urgentia-demo.postman_collection.json --folder "1. Flujo principal" --folder "2. Controles del gateway" --env-var baseUrl=http://host.docker.internal:8080
 docker compose logs notification-service | Select-String EMAIL_SIMULADO
 ```
 
 ```bash
 # Linux
-docker run --rm --add-host=host.docker.internal:host-gateway -v "$PWD/docs/demo:/etc/newman" postman/newman run urgentia-demo.postman_collection.json --env-var baseUrl=http://host.docker.internal:8080
+docker run --rm --add-host=host.docker.internal:host-gateway -v "$PWD/docs/demo:/etc/newman" postman/newman run urgentia-demo.postman_collection.json --folder "1. Flujo principal" --folder "2. Controles del gateway" --env-var baseUrl=http://host.docker.internal:8080
 docker compose logs notification-service | grep EMAIL_SIMULADO
 ```
 
